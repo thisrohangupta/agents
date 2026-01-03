@@ -1,6 +1,6 @@
 pipeline:
   clone:
-    depth: 1
+    depth: 5
     ref:
       name: <+inputs.branch>
       type: branch
