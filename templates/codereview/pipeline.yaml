@@ -1,0 +1,59 @@
+pipeline:
+  clone:
+    depth: 100
+    ref:
+      type: pull-request
+  repo:
+    name: <+inputs.repo>
+  stages:
+    - name: autofix
+      steps:
+        - name: review_prompt_generation_agent
+          run:
+            container:
+              image: abhinavharness/drone-ai-review:latest
+            with:
+              output_dir: /harness/5c5b7e75_813d_40ec_9836_40b5bcf750e6_autofix/task.txt
+              working_directory: /harness
+              harness_execution_id: <+inputs.executionId>
+        - name: coding_agent
+          run:
+            container:
+              image: anewdocker25/mydockerhub:coding-agent
+            with:
+              detailed_logging: "true"
+              max_iterations: "50"
+              task_file_path: /harness/5c5b7e75_813d_40ec_9836_40b5bcf750e6_autofix/task.txt
+              working_directory: /harness
+              show_diff: "false"
+            env:
+              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
+        - name: post_comments
+          run:
+            container:
+              image: abhinavharness/comment-plugin:latest
+            with:
+              comments_file:
+              scm_provider: harness
+              harness_account_id: ACCOUNT_ID
+              repo: <+inputs.repo>
+              pr_number: <+inputs.pr_number>
+            env:
+              TOKEN: <+inputs.harnessKey>
+
+      platform:
+        os: linux
+        arch: amd64
+  inputs:
+    anthropicKey:
+      type: secret
+      default: account.autofix_anthropic_api_key
+    harnessKey:
+      type: secret
+      default: account.harness_api_key
+    repo:
+      type: string
+    pullReq:
+      type: string
+    executionId:
+      type: string
