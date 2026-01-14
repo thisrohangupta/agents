@@ -5,6 +5,7 @@ pipeline:
       name: <+inputs.branch>
       type: branch
   repo:
+    connector: <+inputs.gitConnector>
     name: <+inputs.repo>
   stages:
     - name: autofix
@@ -40,16 +41,275 @@ pipeline:
               rm -r 5c5b7e75_813d_40ec_9836_40b5bcf750e6_autofix
               git add -A
               git diff --cached
+        - name: createNetrc
+          run:
+            shell: sh
+            script: |-
+              cat <<EOF > ${HOME}/.netrc
+                machine ${DRONE_NETRC_MACHINE}
+                login ${DRONE_NETRC_USERNAME}
+                password ${DRONE_NETRC_PASSWORD}
+                EOF
+        - name: push_to_branch
+          run:
+            shell: bash
+            script: >-
+              echo "Current working directory: $(pwd)"
+
+              git config --global user.email "harness-auto-fix-ai@harness.io"
+
+              git config --global user.name "harness-auto-fix"
+
+              git log
+
+              IS_DIFF_PRESENT=true
+
+              if [ -n "$(git status --porcelain)" ]; then
+                ORIGINAL_COMMIT_SHA=$(git rev-parse HEAD)
+                export ORIGINAL_COMMIT_SHA
+                echo "Original commit SHA (before autofix): $ORIGINAL_COMMIT_SHA"
+                
+                git add .
+                git commit -m "harness-auto-fix created this fix"
+                
+                COMMIT_SHA=$(git rev-parse HEAD)
+                export COMMIT_SHA
+                echo "Autofix commit SHA: $COMMIT_SHA"
+                
+                CURRENT_BRANCH="$DRONE_SOURCE_BRANCH"
+                echo "Current branch: $CURRENT_BRANCH"
+                
+                if [ "$CURRENT_BRANCH" = "HEAD" ]; then
+                  SHORT_COMMIT_ID=$(git rev-parse --short HEAD)
+                  FIX_BRANCH="commit-${SHORT_COMMIT_ID}-ai-autofix"
+                  git checkout -b $FIX_BRANCH
+                  echo "Detached HEAD detected. Creating branch: $FIX_BRANCH"
+                  git push -f origin HEAD:$FIX_BRANCH
+                elif [ "$(echo "$CURRENT_BRANCH" | grep "ai-autofix")" != "" ]; then
+                  echo "Branch already has ai-autofix suffix, pushing to same branch"
+                  FIX_BRANCH="$CURRENT_BRANCH"
+                  echo "Pushing changes to branch: $FIX_BRANCH"
+                  git push origin HEAD:$FIX_BRANCH
+                else
+                  echo "Creating new branch with ai-autofix suffix"
+                  FIX_BRANCH="${CURRENT_BRANCH}-ai-autofix"
+                  echo "Do a force push to the new branch"
+                  git push -f origin HEAD:$FIX_BRANCH
+                fi
+                
+                echo "Successfully pushed changes to $FIX_BRANCH"
+              else
+                echo "No changes to commit"
+                IS_DIFF_PRESENT=false
+                FIX_BRANCH="$DRONE_SOURCE_BRANCH"
+                echo "No fix branch created, using current branch: $FIX_BRANCH"
+              fi
+
+              echo "FIX_BRANCH=$FIX_BRANCH" >> $DRONE_OUTPUT
+
+              echo "IS_DIFF_PRESENT=$IS_DIFF_PRESENT" >> $DRONE_OUTPUT
+
+              echo "Exported FIX_BRANCH: $FIX_BRANCH"
+
+              echo "Exported IS_DIFF_PRESENT: $IS_DIFF_PRESENT"
+            with:
+              detailed_logging: "true"
+        - name: create_pr
+          run:
+            shell: sh
+            script: >-
+              die() {
+                echo "Error: $*" >&2
+                exit 1
+              }
+
+
+              echo "=========================================="
+
+              echo "Environment Variables:"
+
+              echo "=========================================="
+
+              env | sort
+
+              echo "=========================================="
+
+              echo ""
+
+              echo "FIX_BRANCH from previous step: $FIX_BRANCH"
+
+              echo "IS_DIFF_PRESENT from previous step: $IS_DIFF_PRESENT"
+
+              echo ""
+
+
+              API_KEY="$HARNESS_API_KEY"
+
+              REPO_IDENTIFIER="$REPO_NAME"
+
+              SOURCE_BRANCH="$FIX_BRANCH"
+
+              TARGET_BRANCH="$DRONE_SOURCE_BRANCH"
+
+              ACCOUNT_ID="${HARNESS_ACCOUNT_ID:-}"
+
+              ORG_ID="${HARNESS_ORG_ID:-}"
+
+              PROJECT_ID="${HARNESS_PROJECT_ID:-}"
+
+              BASE_URL="${HARNESS_BASE_URL:-https://unifiedpipeline.harness.io}"
+
+              TITLE="${HARNESS_PR_TITLE:-}"
+
+              DESCRIPTION="${HARNESS_PR_DESCRIPTION:-}"
+
+              IS_DRAFT="${IS_DRAFT:-false}"
+
+              BYPASS_RULES="${BYPASS_RULES:-false}"
+
+
+              [ -n "$REPO_IDENTIFIER" ] || die "Repository identifier must be
+              provided"
+
+              [ -n "$API_KEY" ] || die "API key must be provided"
+
+              [ -n "$SOURCE_BRANCH" ] || die "Source branch must be provided"
+
+              [ -n "$TARGET_BRANCH" ] || die "Target branch must be provided"
+
+              [ -n "$ACCOUNT_ID" ] || die "Account ID must be provided"
+
+
+              echo "DEBUG: REPO_IDENTIFIER = '$REPO_IDENTIFIER'"
+
+              echo "DEBUG: ACCOUNT_ID = '$ACCOUNT_ID'"
+
+              echo "DEBUG: ORG_ID = '$ORG_ID'"
+
+              echo "DEBUG: PROJECT_ID = '$PROJECT_ID'"
+
+              echo "DEBUG: BASE_URL = '$BASE_URL'"
+
+
+              API_URL="${BASE_URL}/code/api/v1/repos/${REPO_IDENTIFIER}/pullreq"
+
+              QUERY="accountIdentifier=${ACCOUNT_ID}"
+
+              [ -n "$ORG_ID" ] && QUERY="${QUERY}&orgIdentifier=${ORG_ID}"
+
+              [ -n "$PROJECT_ID" ] &&
+              QUERY="${QUERY}&projectIdentifier=${PROJECT_ID}"
+
+
+              if [ -z "$TITLE" ]; then
+                TITLE="Merge ${SOURCE_BRANCH} into ${TARGET_BRANCH}"
+              fi
+
+
+              if [ -n "$DESCRIPTION" ]; then
+                BODY=$(jq -n \
+                  --arg source "$SOURCE_BRANCH" \
+                  --arg target "$TARGET_BRANCH" \
+                  --arg title "$TITLE" \
+                  --arg desc "$DESCRIPTION" \
+                  --argjson draft "$IS_DRAFT" \
+                  --argjson bypass "$BYPASS_RULES" \
+                  '{source_branch: $source, target_branch: $target, title: $title, description: $desc, is_draft: $draft, bypass_rules: $bypass}')
+              else
+                BODY=$(jq -n \
+                  --arg source "$SOURCE_BRANCH" \
+                  --arg target "$TARGET_BRANCH" \
+                  --arg title "$TITLE" \
+                  --argjson draft "$IS_DRAFT" \
+                  --argjson bypass "$BYPASS_RULES" \
+                  '{source_branch: $source, target_branch: $target, title: $title, is_draft: $draft, bypass_rules: $bypass}')
+              fi
+
+
+              echo "Making request to: ${API_URL}"
+
+              echo "Full URL with params: ${API_URL}?${QUERY}"
+
+              echo "With body:"
+
+              echo "$BODY" | jq .
+
+
+              RESPONSE_FILE=$(mktemp)
+
+              HTTP_STATUS=$(curl -sS \
+                -o "$RESPONSE_FILE" \
+                -w "%{http_code}" \
+                -X POST "${API_URL}?${QUERY}" \
+                -H "Content-Type: application/json" \
+                -H "x-api-key: ${API_KEY}" \
+                -d "$BODY")
+
+              echo "Response status code: ${HTTP_STATUS}"
+
+              echo "Response body:"
+
+              cat "$RESPONSE_FILE"
+
+              echo ""
+
+
+              PR_ID=""
+
+              case "$HTTP_STATUS" in
+                409)
+                  echo "Pull request already exists"
+                  PR_ID=$(jq -r '.values.number // empty' < "$RESPONSE_FILE" 2>/dev/null || echo "")
+                  ;;
+                2*)
+                  PR_ID=$(jq -r '.number // empty' < "$RESPONSE_FILE" 2>/dev/null || echo "")
+                  ;;
+                *)
+                  die "Failed to create pull request with status $HTTP_STATUS"
+                  ;;
+              esac
+
+
+              [ -n "$PR_ID" ] || die "Missing PR number in response"
+
+
+              PR_URL="${BASE_URL}/ng/account/${ACCOUNT_ID}/module/code/orgs/${ORG_ID}/projects/${PROJECT_ID}/repos/${REPO_IDENTIFIER}/pulls/${PR_ID}"
+
+              export PR_URL
+
+              export AUTOFIX_PR_ID="$PR_ID"
+
+
+              echo
+
+              echo "Pull request successful"
+
+              echo "PR ID: ${PR_ID}"
+
+              echo "PR URL: ${PR_URL}"
+            with:
+              detailed_logging: "true"
+            env:
+              FIX_BRANCH: <+steps.push_to_branch.output.outputVariables.FIX_BRANCH>
+              IS_DIFF_PRESENT: <+steps.push_to_branch.output.outputVariables.IS_DIFF_PRESENT>
+              HARNESS_API_KEY: <+inputs.harnessKey>
+              REPO_NAME: <+inputs.repo>
+              HARNESS_BASE_URL: https://unifiedpipeline.harness.io
+              HARNESS_PR_DESCRIPTION: working on autofixing your CI checks
+              HARNESS_PR_TITLE: Test PR
+
       platform:
         os: linux
         arch: arm64
   inputs:
     anthropicKey:
       type: secret
-      default: account.autofix_anthropic_api_key
+      default: autofix_anthropic_api_key
     harnessKey:
       type: secret
-      default: account.harness_api_key
+      default: harness_api_key
+    gitConnector:
+      type: string
     repo:
       type: string
     branch:
