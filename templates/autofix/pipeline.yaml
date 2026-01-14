@@ -5,7 +5,7 @@ pipeline:
       name: <+inputs.branch>
       type: branch
   repo:
-    connector: <+inputs.gitConnector>
+    connector: "<+inputs.gitConnector != null ? inputs.gitConnector.id : ''>"
     name: <+inputs.repo>
   stages:
     - name: autofix
@@ -309,7 +309,7 @@ pipeline:
       type: secret
       default: harness_api_key
     gitConnector:
-      type: string
+      type: connector
     repo:
       type: string
     branch:
