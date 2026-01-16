@@ -1,0 +1,67 @@
+pipeline:
+  clone:
+    depth: 1
+    ref:
+      name: <+inputs.branch>
+      type: branch
+    repo: <+inputs.repo>
+    clonedir: /harness/<+inputs.repo>
+  stages:
+    - name: FFCleanup
+      timeout: 10m
+      cache:
+        disabled: false
+      steps:
+        - run:
+            shell: bash
+            script: >-
+              #!/bin/bash
+
+
+              FEATURE_FLAG=${FEATURE_FLAG}
+
+              TREATMENT=${TREATMENT}
+
+              OUTPUT_TASK=${OUTPUT_TASK}
+
+
+              echo "Please execute the following steps:
+                  - Given the next Feature Flags list suitable for cleanup
+                      - Name: '${FEATURE_FLAG}'
+                          - Treatment: '${TREATMENT}'
+                          - Reason: 'explicitly requested from env'
+                  - For each of the flags suitable for cleanup:
+                    - Use the tool \`CodeSearch-Regex\` to find files containing references to the flags returned in the prior step. The list of files returned will be referred from now on as the \`pending files list\`.
+                    - For each file in the \`pending file list\`:
+                        - Use the tool \`FileSystem-ReadFile\` to read the contents of the file
+                        - If the reference to the flag name is part of an evaluation, proceed as follows:
+                            - Remove all evaluations of the flag, leaving only the source code associated to the fossilized treatment for it.
+                                - If the removed code contains a reference to a variable and there aren't additional references, remove it.
+                            - If the split client is not used for further evaluations in that context, remove it (as well as any package import directives)
+                            - Use the tool \`FileSystem-WriteFile\` to write the updated file back overwriting the original one. DO NOT use a different name.
+                        - If it's a public/exported constant, use the \`CodeSearch-Regex\` tool using the name of the constant as an argument and find references to such constants in other files. Add the result of that operation to the \`pending file list\` so that they're iterated as well within this loop.
+                  - After all files have been updated end the conversation with the next outcome to apply changes in a git repository:
+                      - write a new file named \`branch.txt\` with the branch name, should be short, descriptive and have no spaces and ends with a suffix number like a timestamp.
+                      - write a new file named \`commit.txt\` with a commit description message.
+                      - write a new file named \`pr_title.txt\` with a descriptive Pull Request Title.
+                      - write a new file named \`pr_description.txt\` within a summary about all performed changes." > ${OUTPUT_TASK}
+            env:
+              FEATURE_FLAG: ${{inputs.FEATUREFLAG}}
+              TREATMENT: ${{inputs.TREATMENT}}
+              OUTPUT_TASK: /harness/task.txt
+  inputs:
+    FEATUREFLAG:
+      type: string
+      label: Feature Flag
+      required: true
+      description: The feature flag to be cleaned up
+    TREATMENT:
+      type: string
+      label: The treatment to keep the branch code
+      required: true
+      default: on
+    repo:
+      type: string
+    branch:
+      type: string
+      default: main
