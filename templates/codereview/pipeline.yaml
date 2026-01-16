@@ -1,6 +1,6 @@
 pipeline:
   clone:
-    depth: 1
+    depth: 1000
     ref:
       type: pull-request
       number: <+inputs.pullReq>
