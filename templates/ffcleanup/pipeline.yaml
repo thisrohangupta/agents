@@ -55,18 +55,6 @@ pipeline:
                       - write a new file named \`${WORKING_DIR}/commit.txt\` with a commit description message.
                       - write a new file named \`${WORKING_DIR}/pr_title.txt\` with a descriptive Pull Request Title.
                       - write a new file named \`${WORKING_DIR}/pr_description.txt\` within a summary about all performed changes." > ${OUTPUT_TASK}
-
-              # DEBUG #pwd
-
-              #ls -la . 
-
-              #echo "*** TEMPORAL DIR ***"
-
-              #ls -la ${OUTPUT_TASK}
-
-              #echo "**** CAT ****"
-
-              #cat ${OUTPUT_TASK}
         - name: coding_agent
           run:
             container:
