@@ -24,8 +24,7 @@ pipeline:
 
               FEATURE_FLAG=<+inputs.featureFlag>
 
-              TREATMENT=$(echo "<+inputs.treatment>" | xargs) #trimming input
-              with xargs
+              TREATMENT=$(echo "<+inputs.treatment>" | xargs)
 
               # working dir and metadata info
 
