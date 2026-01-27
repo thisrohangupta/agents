@@ -21,12 +21,14 @@ pipeline:
   inputs:
     anthropicKey:
       type: secret
+      default: account.onboarding_anthropic_api_key
       description: Anthropic API key for Claude AI
     harnessKey:
       type: secret
       description: Harness API key for creating pipelines
     harnessBaseURL:
       type: secret
+      default: account.onboarding_harness_base_url
       description: The base URL for harness - in production it's https://harness0.harness.io/gateway/
     scmToken:
       type: secret
