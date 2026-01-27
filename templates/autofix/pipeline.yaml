@@ -5,8 +5,8 @@ pipeline:
     ref:
       name: <+inputs.branch>
       type: branch
-  repo: <+inputs.repo>
-  connector: "<+inputs.gitConnector != null ? inputs.gitConnector.id : ''>" 
+    repo: <+inputs.repo>
+    connector: "<+inputs.gitConnector != null ? inputs.gitConnector.id : ''>" 
   stages:
     - name: autofix
       steps:
