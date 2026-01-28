@@ -1,7 +1,7 @@
 # Code Review Agent
 
 **Version:** 1.0.0  
-**Name:** codereview
+**Name:** Code Review
 
 ## Overview
 
