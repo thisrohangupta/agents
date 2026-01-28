@@ -8,37 +8,25 @@ pipeline:
     repo: <+inputs.repo>
     connector: "<+inputs.gitConnector != null ? inputs.gitConnector.id : ''>"
   stages:
-    - name: autofix
+    - name: react_upgrade
       steps:
-        - name: remediation_agent
-          run:
-            container:
-              image: anewdocker25/mydockerhub:remediation-agent
-            with:
-              detailed_logging: "true"
-              harness_api_key: <+inputs.harnessKey>
-              output_dir: /harness/5c5b7e75_813d_40ec_9836_40b5bcf750e6_autofix
-              working_directory: /harness
-              harness_execution_id: <+inputs.executionId>
-            env:
-              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
         - name: coding_agent
           run:
             container:
               image: anewdocker25/mydockerhub:coding-agent
             with:
               detailed_logging: "true"
-              max_iterations: "50"
-              task_file_path: /harness/5c5b7e75_813d_40ec_9836_40b5bcf750e6_autofix/task.txt
+              max_iterations: "300"
               working_directory: /harness
               show_diff: "false"
+              prompt: <+inputs.prompt>
+              react_upgrade: "true"
             env:
               ANTHROPIC_API_KEY: <+inputs.anthropicKey>
         - name: show_git_diff
           run:
             shell: bash
             script: |-
-              rm -r 5c5b7e75_813d_40ec_9836_40b5bcf750e6_autofix
               git add -A
               git diff --cached
         - name: createNetrc
@@ -53,67 +41,64 @@ pipeline:
         - name: push_to_branch
           run:
             shell: bash
-            script: >-
+            script: |-
               echo "Current working directory: $(pwd)"
-
-              git config --global user.email "harness-auto-fix-ai@harness.io"
-
-              git config --global user.name "harness-auto-fix"
-
+              git config --global user.email "harness-code-agent@harness.io"
+              git config --global user.name "harness-code-agent"
               git log
 
               IS_DIFF_PRESENT=true
 
+              # Store the source branch from input (defaults to main)
+              CURRENT_BRANCH="${SOURCE_BRANCH:-main}"
+              echo "Source branch for PR: $CURRENT_BRANCH"
+
               if [ -n "$(git status --porcelain)" ]; then
                 ORIGINAL_COMMIT_SHA=$(git rev-parse HEAD)
                 export ORIGINAL_COMMIT_SHA
-                echo "Original commit SHA (before autofix): $ORIGINAL_COMMIT_SHA"
+                echo "Original commit SHA (before react upgrade): $ORIGINAL_COMMIT_SHA"
                 
                 git add .
-                git commit -m "harness-auto-fix created this fix"
+                git commit -m "React upgrade: automated changes by react-upgrade-code-agent"
                 
                 COMMIT_SHA=$(git rev-parse HEAD)
                 export COMMIT_SHA
-                echo "Autofix commit SHA: $COMMIT_SHA"
+                echo "React upgrade commit SHA: $COMMIT_SHA"
                 
-                CURRENT_BRANCH="$DRONE_SOURCE_BRANCH"
-                echo "Current branch: $CURRENT_BRANCH"
+                # Define the base branch name for react upgrade
+                BASE_FIX_BRANCH="react-upgrade-code-agent"
                 
-                if [ "$CURRENT_BRANCH" = "HEAD" ]; then
-                  SHORT_COMMIT_ID=$(git rev-parse --short HEAD)
-                  FIX_BRANCH="commit-${SHORT_COMMIT_ID}-ai-autofix"
-                  git checkout -b $FIX_BRANCH
-                  echo "Detached HEAD detected. Creating branch: $FIX_BRANCH"
-                  git push -f origin HEAD:$FIX_BRANCH
-                elif [ "$(echo "$CURRENT_BRANCH" | grep "ai-autofix")" != "" ]; then
-                  echo "Branch already has ai-autofix suffix, pushing to same branch"
-                  FIX_BRANCH="$CURRENT_BRANCH"
-                  echo "Pushing changes to branch: $FIX_BRANCH"
-                  git push origin HEAD:$FIX_BRANCH
+                # Check if the branch already exists remotely
+                if git ls-remote --heads origin $BASE_FIX_BRANCH | grep -q $BASE_FIX_BRANCH; then
+                  echo "Branch $BASE_FIX_BRANCH already exists, creating branch with random suffix"
+                  RANDOM_SUFFIX=$(date +%s)
+                  FIX_BRANCH="${BASE_FIX_BRANCH}-${RANDOM_SUFFIX}"
+                  echo "Creating new branch: $FIX_BRANCH"
                 else
-                  echo "Creating new branch with ai-autofix suffix"
-                  FIX_BRANCH="${CURRENT_BRANCH}-ai-autofix"
-                  echo "Do a force push to the new branch"
-                  git push -f origin HEAD:$FIX_BRANCH
+                  echo "Creating new branch: $BASE_FIX_BRANCH"
+                  FIX_BRANCH="$BASE_FIX_BRANCH"
                 fi
                 
+                # Create and push to the new branch
+                git checkout -b $FIX_BRANCH
+                git push -f origin HEAD:$FIX_BRANCH
+                
                 echo "Successfully pushed changes to $FIX_BRANCH"
+                echo "Will create PR from $FIX_BRANCH to $CURRENT_BRANCH"
+                IS_DIFF_PRESENT=true
               else
                 echo "No changes to commit"
                 IS_DIFF_PRESENT=false
-                FIX_BRANCH="$DRONE_SOURCE_BRANCH"
+                FIX_BRANCH="$SOURCE_BRANCH"
                 echo "No fix branch created, using current branch: $FIX_BRANCH"
               fi
 
               echo "FIX_BRANCH=$FIX_BRANCH" >> $DRONE_OUTPUT
-
               echo "IS_DIFF_PRESENT=$IS_DIFF_PRESENT" >> $DRONE_OUTPUT
-
               echo "Exported FIX_BRANCH: $FIX_BRANCH"
-
               echo "Exported IS_DIFF_PRESENT: $IS_DIFF_PRESENT"
-            with:
-              detailed_logging: "true"
+            env:
+              SOURCE_BRANCH: <+inputs.branch>
         - name: create_pr
           run:
             shell: sh
@@ -145,11 +130,19 @@ pipeline:
 
               API_KEY="$HARNESS_API_KEY"
 
-              REPO_IDENTIFIER="$REPO_NAME"
+              # Use REPO_NAME if provided, otherwise extract from DRONE_REPO_NAME
+              if [ -n "$REPO_NAME" ]; then
+                REPO_IDENTIFIER="$REPO_NAME"
+              elif [ -n "$DRONE_REPO_NAME" ]; then
+                REPO_IDENTIFIER=$(echo "$DRONE_REPO_NAME" | awk -F'/' '{print $NF}')
+                echo "Extracted repo from DRONE_REPO_NAME: $REPO_IDENTIFIER"
+              else
+                die "Repository identifier must be provided"
+              fi
 
-              SOURCE_BRANCH="$FIX_BRANCH"
+              PR_SOURCE_BRANCH="$FIX_BRANCH"
 
-              TARGET_BRANCH="$DRONE_SOURCE_BRANCH"
+              PR_TARGET_BRANCH="${SOURCE_BRANCH:-main}"
 
               ACCOUNT_ID="${HARNESS_ACCOUNT_ID:-}"
 
@@ -180,9 +173,9 @@ pipeline:
 
               [ -n "$API_KEY" ] || die "API key must be provided"
 
-              [ -n "$SOURCE_BRANCH" ] || die "Source branch must be provided"
+              [ -n "$PR_SOURCE_BRANCH" ] || die "Source branch must be provided"
 
-              [ -n "$TARGET_BRANCH" ] || die "Target branch must be provided"
+              [ -n "$PR_TARGET_BRANCH" ] || die "Target branch must be provided"
 
               [ -n "$ACCOUNT_ID" ] || die "Account ID must be provided"
 
@@ -209,14 +202,14 @@ pipeline:
 
 
               if [ -z "$TITLE" ]; then
-                TITLE="Merge ${SOURCE_BRANCH} into ${TARGET_BRANCH}"
+                TITLE="Merge ${PR_SOURCE_BRANCH} into ${PR_TARGET_BRANCH}"
               fi
 
 
               if [ -n "$DESCRIPTION" ]; then
                 BODY=$(jq -n \
-                  --arg source "$SOURCE_BRANCH" \
-                  --arg target "$TARGET_BRANCH" \
+                  --arg source "$PR_SOURCE_BRANCH" \
+                  --arg target "$PR_TARGET_BRANCH" \
                   --arg title "$TITLE" \
                   --arg desc "$DESCRIPTION" \
                   --argjson draft "$IS_DRAFT" \
@@ -224,8 +217,8 @@ pipeline:
                   '{source_branch: $source, target_branch: $target, title: $title, description: $desc, is_draft: $draft, bypass_rules: $bypass}')
               else
                 BODY=$(jq -n \
-                  --arg source "$SOURCE_BRANCH" \
-                  --arg target "$TARGET_BRANCH" \
+                  --arg source "$PR_SOURCE_BRANCH" \
+                  --arg target "$PR_TARGET_BRANCH" \
                   --arg title "$TITLE" \
                   --argjson draft "$IS_DRAFT" \
                   --argjson bypass "$BYPASS_RULES" \
@@ -294,16 +287,17 @@ pipeline:
               echo "PR ID: ${PR_ID}"
 
               echo "PR URL: ${PR_URL}"
-            with:
-              detailed_logging: "true"
             env:
-              FIX_BRANCH: <+pipeline.stages.autofix_1.steps.push_to_branch_1.output.outputVariables.FIX_BRANCH>
-              IS_DIFF_PRESENT: <+pipeline.stages.autofix_1.steps.push_to_branch_1.output.outputVariables.IS_DIFF_PRESENT>
-              HARNESS_API_KEY: ${{inputs.harnessKey}}
+              FIX_BRANCH: <+pipeline.stages.react_upgrade_1.steps.push_to_branch_1.output.outputVariables.FIX_BRANCH>
+              IS_DIFF_PRESENT: <+pipeline.stages.react_upgrade_1.steps.push_to_branch_1.output.outputVariables.IS_DIFF_PRESENT>
+              SOURCE_BRANCH: ${{inputs.branch}}
+              HARNESS_API_KEY: <+inputs.harnessKey>
               REPO_NAME: ${{inputs.repo}}
               HARNESS_BASE_URL: https://unifiedpipeline.harness.io
-              HARNESS_PR_DESCRIPTION: working on autofixing your CI checks
-              HARNESS_PR_TITLE: Test PR
+              HARNESS_PR_DESCRIPTION: Automated React upgrade changes created by
+                react-upgrade-code-agent. Please review the changes before
+                merging.
+              HARNESS_PR_TITLE: "React Upgrade: Automated changes"
 
       platform:
         os: linux
@@ -322,5 +316,8 @@ pipeline:
     branch:
       type: string
       default: main
-    executionId:
+      description: The branch to clone from and create PR against (defaults to main)
+    prompt:
       type: string
+      required: true
+      description: The prompt/task for the coding agent to execute
