@@ -1,0 +1,148 @@
+version: 1
+pipeline:
+  clone:
+    depth: 1
+    ref:
+      name: <+inputs.branch>
+      type: branch
+    repo: <+inputs.repo>
+    connector: "<+inputs.gitConnector != null ? inputs.gitConnector.id : ''>"
+  stages:
+    - name: code-coverage
+      steps:
+        - name: coding_agent
+          run:
+            container:
+              image: himanshu6956/codecov:coding-agent-with-go
+            with:
+              detailed_logging: "true"
+              max_iterations: "300"
+              working_directory: /harness
+              show_diff: "false"
+              prompt: "Analyze the current codebase and identify files with low test coverage. Generate comprehensive unit tests to increase overall coverage to at least 90%."
+              code_coverage: "true"
+              verify: "true"
+              
+            env:
+              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
+        - name: show_git_diff
+          run:
+            shell: bash
+            script: |-
+              printenv
+              git add -A
+              git diff --cached
+        - name: fix_env_variables
+          run:
+            shell: bash
+            script: |-
+              # Get SCM provider from DRONE
+              SCM_PROVIDER="${DRONE_REPO_SCM}"
+              
+              # Convert "Git" to "harness" for Harness Code repositories
+              if [ "$SCM_PROVIDER" = "Git" ]; then
+                echo "Detected Git SCM, converting to harness"
+                SCM_PROVIDER="harness"
+              fi
+              
+              # Convert SCM provider to lowercase for consistency
+              SCM_PROVIDER=$(echo "$SCM_PROVIDER" | tr '[:upper:]' '[:lower:]')
+              echo "SCM Provider (lowercase): $SCM_PROVIDER"
+              
+              # Set credentials based on SCM provider
+              if [ "$SCM_PROVIDER" = "harness" ]; then
+                echo "Setting credentials for Harness Code"
+                TOKEN="${HARNESS_API_KEY}"
+                NETRC_USERNAME="${DRONE_NETRC_USERNAME}"
+                NETRC_PASSWORD="${DRONE_NETRC_PASSWORD}"
+              else
+                echo "Setting credentials for $SCM_PROVIDER"
+                # For GitHub, GitLab, Bitbucket, etc.
+                # Extract username from DRONE_REPO_LINK (e.g., https://github.com/ahimanshu56/test -> ahimanshu56)
+                if [ -n "$DRONE_REPO_LINK" ]; then
+                  # Remove protocol and domain, get path, extract first part (username/owner)
+                  NETRC_USERNAME=$(echo "$DRONE_REPO_LINK" | sed -E 's|https?://[^/]+/([^/]+)/.*|\1|')
+                  echo "Extracted username from DRONE_REPO_LINK: $NETRC_USERNAME"
+                else
+                  NETRC_USERNAME="${DRONE_NETRC_USERNAME}"
+                fi
+                TOKEN="${SCM_TOKEN}"
+                NETRC_PASSWORD="${SCM_TOKEN}"
+              fi
+
+              # Construct base URL (IMPORTANT!)
+              BASE_URL="${DRONE_SYSTEM_PROTO}://${DRONE_SYSTEM_HOST}"
+              
+              # Export for next step
+              echo "SCM_PROVIDER=$SCM_PROVIDER" >> $DRONE_OUTPUT
+              echo "TOKEN=$TOKEN" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "NETRC_USERNAME=$NETRC_USERNAME" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "NETRC_PASSWORD=$NETRC_PASSWORD" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "BASE_URL=$BASE_URL" >> $DRONE_OUTPUT
+              echo "Detected SCM Provider: $SCM_PROVIDER"
+            env:
+              HARNESS_API_KEY: <+inputs.harnessKey>
+              SCM_TOKEN: <+inputs.gitConnector.token>
+              
+        - name: push_and_create_pr
+          run:
+            container:
+              image: himanshu6956/create-pr-plugin:latest
+            env:
+              # Core Plugin Settings
+              PLUGIN_SCM_PROVIDER: <+pipeline.stages.codecoverage_1.steps.fix_env_variables_1.output.outputVariables.SCM_PROVIDER>
+              PLUGIN_TOKEN: <+pipeline.stages.codecoverage_1.steps.fix_env_variables_1.output.outputVariables.TOKEN>
+              PLUGIN_REPO: ${{inputs.repo}}
+              PLUGIN_SOURCE_BRANCH: ${{inputs.branch}}
+              
+              # Git Authentication (Netrc)
+              PLUGIN_NETRC_MACHINE: <+env.DRONE_NETRC_MACHINE>
+              PLUGIN_NETRC_USERNAME: <+pipeline.stages.codecoverage_1.steps.fix_env_variables_1.output.outputVariables.NETRC_USERNAME>
+              PLUGIN_NETRC_PASSWORD: <+pipeline.stages.codecoverage_1.steps.fix_env_variables_1.output.outputVariables.NETRC_PASSWORD>
+              
+              # Branch Configuration
+              PLUGIN_BRANCH_SUFFIX: code-coverage-agent
+              PLUGIN_UNIQUE_PER_EXECUTION: "true"
+              PLUGIN_FORCE_PUSH: "true"
+              
+              # Commit Configuration
+              PLUGIN_COMMIT_MESSAGE: "Code coverage: automated test additions by Harness AI"
+              
+              # Git Operations
+              PLUGIN_PUSH_CHANGES: "true"
+              
+              # Pull Request Configuration
+              PLUGIN_CREATE_PR: "true"
+              PLUGIN_PR_TITLE: "Code Coverage: Automated coverage increase by Harness AI"
+              PLUGIN_PR_DESCRIPTION: "Automated code coverage improvements created by code-coverage-agent. Please review the generated tests before merging."
+              PLUGIN_IS_DRAFT: "false"
+              PLUGIN_BYPASS_RULES: "false"
+              
+              # Harness Code Specific Settings (used only when SCM_PROVIDER=harness)
+              PLUGIN_HARNESS_ACCOUNT_ID: <+env.HARNESS_ACCOUNT_ID>
+              PLUGIN_HARNESS_ORG_ID: <+env.HARNESS_ORG_ID>
+              PLUGIN_HARNESS_PROJECT_ID: <+env.HARNESS_PROJECT_ID>
+              PLUGIN_HARNESS_BASE_URL: <+pipeline.stages.codecoverage_1.steps.fix_env_variables_1.output.outputVariables.BASE_URL>
+              
+              # Debug & Output
+              PLUGIN_DEBUG: "false"
+              PLUGIN_OUTPUT_FILE: <+env.DRONE_OUTPUT>
+
+      platform:
+        os: linux
+        arch: arm64
+  inputs:
+    anthropicKey:
+      type: secret
+      default: autofix_anthropic_api_key
+    harnessKey:
+      type: secret
+      default: harness_api_key
+    gitConnector:
+      type: connector
+    repo:
+      type: string
+    branch:
+      type: string
+      default: main
+      description: The branch to clone from and create PR against (defaults to main)
