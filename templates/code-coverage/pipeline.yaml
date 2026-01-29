@@ -76,7 +76,7 @@ pipeline:
               # Export for next step
               echo "SCM_PROVIDER=$SCM_PROVIDER" >> $DRONE_OUTPUT
               echo "TOKEN=$TOKEN" >> $HARNESS_OUTPUT_SECRET_FILE
-              echo "NETRC_USERNAME=$NETRC_USERNAME" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "NETRC_USERNAME=$NETRC_USERNAME" >> $DRONE_OUTPUT
               echo "NETRC_PASSWORD=$NETRC_PASSWORD" >> $HARNESS_OUTPUT_SECRET_FILE
               echo "BASE_URL=$BASE_URL" >> $DRONE_OUTPUT
               echo "Detected SCM Provider: $SCM_PROVIDER"
