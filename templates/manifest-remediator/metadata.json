@@ -1,0 +1,5 @@
+{
+    "name": "manifest-remediator",
+    "description": "Analyzes Kubernetes and Helm deployment failures, generates targeted fixes, and produces remediation YAML with actionable solutions",
+    "version": "1.0.0"
+}

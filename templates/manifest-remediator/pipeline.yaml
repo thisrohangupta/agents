@@ -1,0 +1,59 @@
+pipeline:
+  stages:
+    - name: manifest_remediation
+      steps:
+        - name: PrintEnv
+          run:
+            shell: bash
+            script: |
+              echo "Harness Execution ID: <+inputs.harnessExecutionId>"
+              echo "Harness Pipeline ID: <+inputs.harnessPipelineId>"
+              echo "Harness Base URL: <+inputs.harnessBaseUrl>"
+              echo "Harness Project ID: <+inputs.harnessProjectId>"
+              echo "Harness Org ID: <+inputs.harnessOrgId>"
+              echo "Harness Account ID: <+inputs.harnessAccountId>"
+              printenv
+        - name: Manifest Remediator
+          run:
+            container:
+              image: rajpatel2/manifest-remediator:manifest-remediator
+            with:
+              detailed_logging: "true"
+              harness_api_key: <+inputs.harnessKey>
+              working_directory: /harness
+              harness_execution_id: <+inputs.harnessExecutionId>
+              harness_pipeline_id: <+inputs.harnessPipelineId>
+              harness_base_url: <+inputs.harnessBaseUrl>
+              harness_project_id: <+inputs.harnessProjectId>
+              harness_org_id: <+inputs.harnessOrgId>
+              harness_account_id: <+inputs.harnessAccountId>
+            env:
+              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
+        - name: Output
+          run:
+            script: |-
+              echo "=== Manifest Remediation Results ==="
+              cat /harness/manifest_remediation_results.yaml
+            shell: bash
+      platform:
+        os: linux
+        arch: arm64
+  inputs:
+    anthropicKey:
+      type: secret
+      default: autofix_anthropic_api_key
+    harnessKey:
+      type: secret
+      default: harness_api_key
+    harnessExecutionId:
+      type: string
+    harnessPipelineId:
+      type: string
+    harnessBaseUrl:
+      type: string
+    harnessProjectId:
+      type: string
+    harnessOrgId:
+      type: string
+    harnessAccountId:
+      type: string
