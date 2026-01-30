@@ -19,7 +19,7 @@ pipeline:
               max_iterations: "300"
               working_directory: /harness
               show_diff: "false"
-              prompt: "Analyze the current codebase and identify files with low test coverage. Generate comprehensive unit tests to increase overall coverage to at least 90%."
+              prompt: "Analyze the current codebase and identify test coverage. Generate comprehensive unit tests to increase overall coverage to at least 90% and each file coverage to at least 85%. Generate COVERAGE.md file with the coverage report."
               code_coverage: "true"
               verify: "true"
               
@@ -127,6 +127,54 @@ pipeline:
               # Debug & Output
               PLUGIN_DEBUG: "false"
               PLUGIN_OUTPUT_FILE: <+env.DRONE_OUTPUT>
+        
+        - name: prepare_coverage_comment
+          run:
+            shell: bash
+            script: |-
+              if [ -f "COVERAGE.md" ]; then
+                echo "Found COVERAGE.md file"
+                
+                COMMENT_FILE="/harness/coverage_comment_body.txt"
+                
+                # Write header and content in one go
+                {
+                  echo "## 📊 Code Coverage Report"
+                  echo ""
+                  cat COVERAGE.md
+                } > "$COMMENT_FILE"
+                
+                echo "COVERAGE_COMMENT_FILE=$COMMENT_FILE" >> $DRONE_OUTPUT
+                echo "Coverage comment prepared successfully"
+              else
+                echo "Warning: COVERAGE.md file not found. Skipping comment creation."
+                echo "COVERAGE_COMMENT_FILE=" >> $DRONE_OUTPUT
+              fi
+        
+        - name: post_coverage_comment
+          run:
+            container:
+              image: abhinavharness/comment-plugin:latest
+            shell: sh
+            script: |-
+              COMMENT_FILE="<+pipeline.stages.codecoverage_1.steps.prepare_coverage_comment_1.output.outputVariables.COVERAGE_COMMENT_FILE>"
+              
+              if [ -z "$COMMENT_FILE" ] || [ ! -f "$COMMENT_FILE" ]; then
+                echo "No coverage comment file found, skipping"
+                exit 0
+              fi
+              
+              export PLUGIN_COMMENT_BODY=$(cat "$COMMENT_FILE")
+              exec /app/comment-plugin
+            env:
+              PLUGIN_SCM_PROVIDER: <+pipeline.stages.codecoverage_1.steps.fix_env_variables_1.output.outputVariables.SCM_PROVIDER>
+              PLUGIN_TOKEN: <+pipeline.stages.codecoverage_1.steps.fix_env_variables_1.output.outputVariables.TOKEN>
+              PLUGIN_REPO: ${{inputs.repo}}
+              PLUGIN_PR_NUMBER: <+pipeline.stages.codecoverage_1.steps.push_and_create_pr_1.output.outputVariables.PR_NUMBER>
+              PLUGIN_SCM_ENDPOINT: <+pipeline.stages.codecoverage_1.steps.fix_env_variables_1.output.outputVariables.BASE_URL>
+              PLUGIN_HARNESS_ACCOUNT_ID: <+env.HARNESS_ACCOUNT_ID>
+              PLUGIN_HARNESS_ORG_ID: <+env.HARNESS_ORG_ID>
+              PLUGIN_HARNESS_PROJECT_ID: <+env.HARNESS_PROJECT_ID>
 
       platform:
         os: linux
