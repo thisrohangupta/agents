@@ -25,15 +25,15 @@ templates/
 
 | Field | Type | Rules |
 |-------|------|-------|
-| `name` | string | Lowercase, alphanumeric with hyphens only. Must match directory name. |
+| `name` | string | Lowercase, alphanumeric with spaces only. Human-readable name (e.g., `autofix`, `feature flag cleanup`). |
 | `description` | string | 1-2 clear sentences. Start with agent name. Use active voice. |
 | `version` | string | Semantic versioning (MAJOR.MINOR.PATCH) |
 
 **Validation checklist:**
 
 - [ ] Valid JSON syntax
-- [ ] `name` uses lowercase with hyphens (e.g., `my-agent`, not `MyAgent` or `my_agent`)
-- [ ] `name` matches the template directory name
+- [ ] `name` uses lowercase with spaces (e.g., `feature flag cleanup`, not `feature-flag-cleanup` or `Feature-Flag-Cleanup`)
+- [ ] `name` is a human-readable version of the directory name (spaces instead of hyphens)
 - [ ] `description` is a complete sentence ending with proper punctuation
 - [ ] `description` clearly states what the agent does
 - [ ] `version` follows semver format (e.g., `1.0.0`, `2.1.3`)
@@ -41,14 +41,14 @@ templates/
 **Example (correct):**
 ```json
 {
-    "name": "code-review",
+    "name": "code review",
     "description": "Code Review is an agent that reviews code changes and comments on pull requests.",
     "version": "1.0.0"
 }
 ```
 
 **Common issues to flag:**
-- Name with spaces: `"feature flag cleanup"` should be `"feature-flag-cleanup"`
+- Name with hyphens: `"feature-flag-cleanup"` should be `"feature flag cleanup"`
 - Missing punctuation in description
 - Version not following semver (e.g., `"v1"`, `"1.0"`)
 
@@ -303,7 +303,7 @@ env:
 | Type | Convention | Example |
 |------|------------|---------|
 | Directory | lowercase-hyphen | `code-review` |
-| metadata name | lowercase-hyphen | `code-review` |
+| metadata name | lowercase with spaces | `code review` |
 | Stage name | PascalCase or lowercase | `CodeReview` or `codereview` |
 | Step name | snake_case or lowercase | `run_tests` or `runtests` |
 | Input name | camelCase | `apiKey`, `repoName` |
