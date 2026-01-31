@@ -259,8 +259,8 @@ Provides user-facing documentation for the agent template. When present, this is
 
 ### Naming Conventions
 
-- ✅ Use lowercase with hyphens: `my-agent`, `code-scanner`
-- ❌ Avoid: `MyAgent`, `my_agent`, `MYAGENT`
+- ✅ Use Sentence Case: `My Agent`, `Code Coverage`, `Library Upgrade`, `Autofix`, `Manifest Rendering`
+- ❌ Avoid: `MyAgent`, `my_agent`, `MYAGENT`, `my-agent`, `code-scanner`
 
 ### Documentation
 
