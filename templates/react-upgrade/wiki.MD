@@ -1,4 +1,4 @@
-# React.js Library Upgrade Agent
+# React Library Upgrade Agent
 
 ## Overview
 
