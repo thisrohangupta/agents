@@ -8,7 +8,7 @@ pipeline:
             container:
               image: colinharness/onboarding-agent:1.0.30
             env:
-              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
+              ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
               HARNESS_API_KEY: <+inputs.harnessKey>
               REPO_NAME: <+inputs.repoName>
               REPO_NAMESPACE: <+inputs.repoNamespace>
@@ -18,9 +18,8 @@ pipeline:
         os: linux
         arch: amd64
   inputs:
-    anthropicKey:
-      type: secret
-      default: account.onboarding_anthropic_api_key
+    llmConnector:
+      type: connector
       description: Anthropic API key for Claude AI
     harnessKey:
       type: secret
