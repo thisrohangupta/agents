@@ -6,9 +6,10 @@ pipeline:
         - name: onboarding_agent
           run:
             container:
-              image: colinharness/onboarding-agent:1.0.19
+              image: colinharness/onboarding-agent:1.0.30
             env:
               ANTHROPIC_API_KEY: <+inputs.anthropicKey>
+              HARNESS_API_KEY: <+inputs.harnessKey>
               REPO_NAME: <+inputs.repoName>
               REPO_NAMESPACE: <+inputs.repoNamespace>
               SCM_TOKEN: <+inputs.scmToken>
@@ -21,6 +22,10 @@ pipeline:
       type: secret
       default: account.onboarding_anthropic_api_key
       description: Anthropic API key for Claude AI
+    harnessKey:
+      type: secret
+      default: account.onboarding_harness_token
+      description: Harness API key for creating pipelines
     scmToken:
       type: secret
       description: GitHub token / password for accessing private repositories (optional)
