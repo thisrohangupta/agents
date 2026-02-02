@@ -29,7 +29,6 @@ pipeline:
           run:
             shell: bash
             script: |-
-              printenv
               git add -A
               git diff --cached
         - name: fix_env_variables
