@@ -24,7 +24,7 @@ pipeline:
       description: Anthropic API key for Claude AI
     harnessKey:
       type: secret
-      default: account.onboarding_harness_token
+      default: account.onboarding_harness_token_pat
       description: Harness API key for creating pipelines
     scmToken:
       type: secret
