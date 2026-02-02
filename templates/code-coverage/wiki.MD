@@ -35,9 +35,9 @@ The **Code Coverage Agent** is an AI-powered coding agent that automatically ana
 
 | Input | Type | Description | Default |
 |-------|------|-------------|---------|
-| `anthropicKey` | secret | Anthropic API key for Claude AI | `autofix_anthropic_api_key` |
+| `llmConnector` | connector | LLM connector for Claude AI (Anthropic) | _Required_ |
 | `harnessKey` | secret | Harness API key for PR creation and commenting | `harness_api_key` |
-| `gitConnector` | connector | Git connector for repository access | _Optional_ |
+| `gitConnector` | connector | Git connector for repository access | _Required_ |
 | `repo` | string | Repository name to analyze | _Required_ |
 | `branch` | string | Branch to clone from and create PR against | `main` |
 
@@ -49,13 +49,13 @@ The **Code Coverage Agent** is an AI-powered coding agent that automatically ana
 - **Detailed Logging:** Enabled
 - **Code Coverage Mode:** Enabled
 - **Verification:** Enabled
-- **Coverage Target:** 90% overall coverage
+- **Coverage Target:** 90% overall coverage, 80% per file
 
 ## Agent Behavior
 
 The agent is pre-configured with the following objective:
 
-> "Analyze the current codebase and identify test coverage. Generate comprehensive unit tests to increase overall coverage to at least 90% and each file coverage to at least 85%. Generate COVERAGE.md file with the coverage report."
+> "Analyze the current codebase and identify test coverage. Generate comprehensive unit tests to increase overall coverage to at least 90% and each file coverage to at least 80%. Generate a CONCISE COVERAGE.md file (under 10000 characters) with: Overall coverage percentage (before → after), Summary table of files modified/added with their coverage percentages, Files coverage percentage, Key improvements achieved, Use bullet points and tables for brevity - avoid lengthy explanations."
 
 The agent will:
 - Scan all source files in the repository
@@ -130,7 +130,7 @@ Authentication is handled transparently using the provided `gitConnector` and ap
 ## Troubleshooting
 
 ### Agent Doesn't Generate Tests
-- Verify the `ANTHROPIC_API_KEY` is valid and has sufficient credits
+- Verify the `llmConnector` is properly configured with valid Anthropic credentials
 - Ensure the repository has accessible source code files
 - Check that the repository structure is recognizable
 - Review agent logs in the pipeline execution

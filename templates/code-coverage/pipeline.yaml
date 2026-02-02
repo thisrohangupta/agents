@@ -19,17 +19,16 @@ pipeline:
               max_iterations: "300"
               working_directory: /harness
               show_diff: "false"
-              prompt: "Analyze the current codebase and identify test coverage. Generate comprehensive unit tests to increase overall coverage to at least 90% and each file coverage to at least 85%. Generate COVERAGE.md file with the coverage report."
+              prompt: "Analyze the current codebase and identify test coverage. Generate comprehensive unit tests to increase overall coverage to at least 90% and each file coverage to at least 80%. Generate a CONCISE COVERAGE.md file (under 10000 characters) with: Overall coverage percentage (before → after), Summary table of files modified/added with their coverage percentages, Files coverage percentage, Key improvements achieved, Use bullet points and tables for brevity - avoid lengthy explanations."
               code_coverage: "true"
               verify: "true"
               
             env:
-              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
+              ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
         - name: show_git_diff
           run:
             shell: bash
             script: |-
-              printenv
               git add -A
               git diff --cached
         - name: fix_env_variables
@@ -52,7 +51,14 @@ pipeline:
               # Set credentials based on SCM provider
               if [ "$SCM_PROVIDER" = "harness" ]; then
                 echo "Setting credentials for Harness Code"
-                TOKEN="${HARNESS_API_KEY}"
+                # Use HARNESS_API_KEY if available, otherwise fall back to SCM_TOKEN (git connector)
+                if [ -n "$HARNESS_API_KEY" ]; then
+                  TOKEN="${HARNESS_API_KEY}"
+                  echo "Using Harness API Key for authentication"
+                else
+                  TOKEN="${SCM_TOKEN}"
+                  echo "Using Git Connector token for authentication"
+                fi
                 NETRC_USERNAME="${DRONE_NETRC_USERNAME}"
                 NETRC_PASSWORD="${DRONE_NETRC_PASSWORD}"
               else
@@ -132,8 +138,11 @@ pipeline:
           run:
             shell: bash
             script: |-
-              if [ -f "COVERAGE.md" ]; then
-                echo "Found COVERAGE.md file"
+              # Search for COVERAGE.md file recursively, excluding common directories
+              COVERAGE_FILE=$(find . -name "COVERAGE.md" -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/vendor/*" | head -n 1)
+              
+              if [ -n "$COVERAGE_FILE" ]; then
+                echo "Found COVERAGE.md file at: $COVERAGE_FILE"
                 
                 COMMENT_FILE="/harness/coverage_comment_body.txt"
                 
@@ -141,7 +150,7 @@ pipeline:
                 {
                   echo "## 📊 Code Coverage Report"
                   echo ""
-                  cat COVERAGE.md
+                  cat "$COVERAGE_FILE"
                 } > "$COMMENT_FILE"
                 
                 echo "COVERAGE_COMMENT_FILE=$COMMENT_FILE" >> $DRONE_OUTPUT
@@ -180,9 +189,8 @@ pipeline:
         os: linux
         arch: arm64
   inputs:
-    anthropicKey:
-      type: secret
-      default: autofix_anthropic_api_key
+    llmConnector:
+      type: connector
     harnessKey:
       type: secret
       default: harness_api_key

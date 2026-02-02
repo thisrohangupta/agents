@@ -27,7 +27,7 @@ The React Upgrade Agent is an AI-powered coding agent that automates React versi
 
 | Input | Type | Required | Description |
 |-------|------|----------|-------------|
-| anthropicKey | secret | Yes (default provided) | Anthropic API key for Claude AI (default: `autofix_anthropic_api_key`) |
+| llmConnector | connector | Yes | LLM connector for Claude AI (Anthropic) |
 | harnessKey | secret | Yes (default provided) | Harness API key for PR creation (default: `harness_api_key`) |
 | gitConnector | connector | Yes | Git connector for repository access |
 | repo | string | Yes | Repository name (e.g., `hello-world`) |
@@ -142,7 +142,7 @@ The coding agent accepts these parameters via `with`:
 - Old branches can be deleted manually if no longer needed
 
 **API Connection Issues**
-- Verify the `anthropicKey` is valid and has quota remaining
+- Verify the `llmConnector` is properly configured with valid Anthropic credentials
 - Check network connectivity from the Harness delegate
 
 ### Best Practices
