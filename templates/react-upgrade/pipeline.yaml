@@ -138,6 +138,7 @@ pipeline:
   inputs:
     llmConnector:
       type: connector
+      default: anthropic_connector
     harnessKey:
       type: secret
       default: harness_api_key
