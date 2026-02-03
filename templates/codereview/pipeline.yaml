@@ -8,7 +8,7 @@ pipeline:
 
     repo: <+inputs.repo>
   stages:
-    - name: autofix
+    - name: review
       steps:
         - name: review_prompt_generation_agent
           run:
