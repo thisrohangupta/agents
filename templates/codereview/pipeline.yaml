@@ -29,7 +29,7 @@ pipeline:
               working_directory: /harness
               show_diff: "false"
             env:
-              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
+              ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
         - name: post_comments
           run:
             container:
@@ -44,9 +44,8 @@ pipeline:
         os: linux
         arch: arm64
   inputs:
-    anthropicKey:
-      type: secret
-      default: account.autofix_anthropic_api_key
+    llmConnector:
+      type: connector
     harnessKey:
       type: secret
       default: account.harness_api_key
