@@ -66,7 +66,7 @@ pipeline:
               working_directory: /harness
               show_diff: "false"
             env:
-              ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
+              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
         - name: createNetrc
           run:
             shell: sh
@@ -180,8 +180,9 @@ pipeline:
 
               EOF
   inputs:
-    llmConnector:
-      type: connector
+    anthropicKey:
+      type: secret
+      default: ffcleanup_anthropic_apikey
     harnessApiKey:
       type: secret
       default: ffcleanup_harness_apikey

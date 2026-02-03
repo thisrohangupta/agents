@@ -28,7 +28,7 @@ pipeline:
               harness_org_id: <+inputs.harnessOrgId>
               harness_account_id: <+inputs.harnessAccountId>
             env:
-              ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
+              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
         - name: Output
           run:
             script: |-
@@ -39,8 +39,9 @@ pipeline:
         os: linux
         arch: arm64
   inputs:
-    llmConnector:
-      type: connector
+    anthropicKey:
+      type: secret
+      default: autofix_anthropic_api_key
     harnessKey:
       type: secret
       default: harness_api_key
