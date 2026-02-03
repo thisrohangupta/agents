@@ -9,8 +9,10 @@ pipeline:
     connector: "<+inputs.gitConnector != null ? inputs.gitConnector.id : ''>"
   stages:
     - name: autofix
+      id: stage1
       steps:
         - name: remediation_agent
+          id: step1
           run:
             container:
               image: anewdocker25/mydockerhub:remediation-agent
@@ -23,6 +25,7 @@ pipeline:
             env:
               ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
         - name: coding_agent
+          id: step2
           run:
             container:
               image: anewdocker25/mydockerhub:coding-agent
@@ -35,6 +38,7 @@ pipeline:
             env:
               ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
         - name: show_git_diff
+          id: step3
           run:
             shell: bash
             script: |-
@@ -42,6 +46,7 @@ pipeline:
               git add -A
               git diff --cached
         - name: fix_env_variables
+          id: step4
           run:
             shell: bash
             script: |-
@@ -101,6 +106,7 @@ pipeline:
               SCM_TOKEN: <+inputs.gitConnector.token>
               
         - name: push_and_create_pr
+          id: step5
           run:
             container:
               image: himanshu6956/create-pr-plugin:latest
