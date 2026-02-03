@@ -99,15 +99,15 @@ pipeline:
               image: himanshu6956/create-pr-plugin:latest
             env:
               # Core Plugin Settings
-              PLUGIN_SCM_PROVIDER: <+pipeline.stages.react_upgrade_1.steps.fix_env_variables_1.output.outputVariables.SCM_PROVIDER>
-              PLUGIN_TOKEN: <+pipeline.stages.react_upgrade_1.steps.fix_env_variables_1.output.outputVariables.TOKEN>
+              PLUGIN_SCM_PROVIDER: <+pipeline.stages.stage1.steps.step3.output.outputVariables.SCM_PROVIDER>
+              PLUGIN_TOKEN: <+pipeline.stages.stage1.steps.step3.output.outputVariables.TOKEN>
               PLUGIN_REPO: ${{inputs.repo}}
               PLUGIN_SOURCE_BRANCH: ${{inputs.branch}}
               
               # Git Authentication (Netrc)
               PLUGIN_NETRC_MACHINE: <+env.DRONE_NETRC_MACHINE>
-              PLUGIN_NETRC_USERNAME: <+pipeline.stages.react_upgrade_1.steps.fix_env_variables_1.output.outputVariables.NETRC_USERNAME>
-              PLUGIN_NETRC_PASSWORD: <+pipeline.stages.react_upgrade_1.steps.fix_env_variables_1.output.outputVariables.NETRC_PASSWORD>
+              PLUGIN_NETRC_USERNAME: <+pipeline.stages.stage1.steps.step3.output.outputVariables.NETRC_USERNAME>
+              PLUGIN_NETRC_PASSWORD: <+pipeline.stages.stage1.steps.step3.output.outputVariables.NETRC_PASSWORD>
               
               # Branch Configuration
               PLUGIN_BRANCH_SUFFIX: react-upgrade-code-agent
@@ -131,7 +131,7 @@ pipeline:
               PLUGIN_HARNESS_ACCOUNT_ID: <+env.HARNESS_ACCOUNT_ID>
               PLUGIN_HARNESS_ORG_ID: <+env.HARNESS_ORG_ID>
               PLUGIN_HARNESS_PROJECT_ID: <+env.HARNESS_PROJECT_ID>
-              PLUGIN_HARNESS_BASE_URL: <+pipeline.stages.react_upgrade_1.steps.fix_env_variables_1.output.outputVariables.BASE_URL>
+              PLUGIN_HARNESS_BASE_URL: <+pipeline.stages.stage1.steps.step3.output.outputVariables.BASE_URL>
               
               # Debug & Output
               PLUGIN_DEBUG: "false"
