@@ -1,0 +1,84 @@
+version: 1
+pipeline:
+  stages:
+    - name: zero_day_remediation
+      steps:
+        - name: remediate_vulnerabilities
+          run:
+            container:
+              image: harness/vulnerability-remediation-plugin:latest
+            with:
+              cve_id: <+inputs.cveId>
+              component_name: <+inputs.componentName>
+              fixed_version: <+inputs.fixedVersion>
+              current_version: <+inputs.currentVersion>
+              harness_org_id: <+inputs.harnessOrgId>
+              harness_project_id: <+inputs.harnessProjectId>
+              target_branch: <+inputs.targetBranch>
+              branch_prefix: <+inputs.branchPrefix>
+              author_name: <+inputs.authorName>
+              author_email: <+inputs.authorEmail>
+              max_repos: <+inputs.maxRepos>
+              search: <+inputs.search>
+              working_directory: /harness
+              detailed_logging: "true"
+            env:
+              ANTHROPIC_API_KEY: <+inputs.anthropicKey>
+              HARNESS_API_KEY: <+inputs.harnessKey>
+              REPO_ACCESS_TOKEN: <+inputs.repoAccessToken>
+      platform:
+        os: linux
+        arch: amd64
+  inputs:
+    anthropicKey:
+      type: secret
+      description: Anthropic API key for Claude LLM analysis
+    harnessKey:
+      type: secret
+      description: Harness PAT token for API operations
+    repoAccessToken:
+      type: secret
+      description: Git access token for repository operations
+    cveId:
+      type: string
+      description: CVE identifier to remediate (e.g., CVE-2021-44228)
+    componentName:
+      type: string
+      description: Vulnerable component name to upgrade
+    fixedVersion:
+      type: string
+      description: Target version to upgrade to
+    currentVersion:
+      type: string
+      description: Current vulnerable version
+    harnessOrgId:
+      type: string
+      required: true
+      description: Harness organization ID
+    harnessProjectId:
+      type: string
+      required: true
+      description: Harness project ID
+    targetBranch:
+      type: string
+      default: main
+      description: Target branch for pull requests
+    branchPrefix:
+      type: string
+      default: "fix/"
+      description: Prefix for fix branches
+    authorName:
+      type: string
+      default: "AI Workflow"
+      description: Git author name for commits
+    authorEmail:
+      type: string
+      default: "ai-workflow@harness.io"
+      description: Git author email for commits
+    maxRepos:
+      type: string
+      default: "0"
+      description: Maximum repositories to process (0 for unlimited)
+    search:
+      type: string
+      description: Filter repositories by name pattern
