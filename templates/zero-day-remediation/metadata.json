@@ -1,0 +1,5 @@
+{
+    "name": "Zero Day Remediation",
+    "description": "Zero Day Remediation is an agent that automatically identifies and remediates critical vulnerabilities in your software supply chain by proposing fixes and creating pull requests.",
+    "version": "1.0.0"
+}
