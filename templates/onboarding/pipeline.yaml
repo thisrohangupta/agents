@@ -6,7 +6,7 @@ pipeline:
         - name: onboarding_agent
           run:
             container:
-              image: colinharness/onboarding-agent:1.0.37
+              image: colinharness/onboarding-agent:1.0.38
             env:
               ANTHROPIC_API_KEY: <+inputs.anthropicKey>
               HARNESS_API_KEY: <+inputs.harnessKey>
