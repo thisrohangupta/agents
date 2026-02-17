@@ -1,4 +1,3 @@
-Note: This repo will eventually be moved into harness/
 
 # System Agent Templates
 
