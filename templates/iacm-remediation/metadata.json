@@ -1,0 +1,5 @@
+{
+    "name": "IaCM Remediation",
+    "description": "AI-powered agent that fixes infrastructure drift in Terraform/OpenTofu repositories by analyzing drifted plan JSON and updating source code to match actual state.",
+    "version": "1.0.0"
+}
