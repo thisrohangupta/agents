@@ -1,0 +1,160 @@
+version: 1
+pipeline:
+  clone:
+    depth: 1
+    ref:
+      name: <+inputs.branch>
+      type: branch
+    repo: <+inputs.repo>
+    connector: "<+inputs.gitConnector != null ? inputs.gitConnector.id : ''>"
+  stages:
+    - name: go_upgrade
+      id: stage1
+      steps:
+        - name: coding_agent
+          id: step1
+          run:
+            container:
+              image: anewdocker25/mydockerhub:coding-agent
+            with:
+              detailed_logging: "true"
+              max_iterations: "300"
+              working_directory: /harness
+              show_diff: "false"
+              prompt: <+inputs.prompt>
+              go_upgrade: "true"
+            env:
+              ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
+        - name: show_git_diff
+          id: step2
+          run:
+            shell: bash
+            script: |-
+              git add -A
+              git diff --cached
+        - name: fix_env_variables
+          id: step3
+          run:
+            shell: bash
+            script: |-
+              # Get SCM provider from DRONE
+              SCM_PROVIDER="${DRONE_REPO_SCM}"
+
+              # Convert "Git" to "harness" for Harness Code repositories
+              if [ "$SCM_PROVIDER" = "Git" ]; then
+                echo "Detected Git SCM, converting to harness"
+                SCM_PROVIDER="harness"
+              fi
+
+              # Convert SCM provider to lowercase for consistency
+              SCM_PROVIDER=$(echo "$SCM_PROVIDER" | tr '[:upper:]' '[:lower:]')
+              echo "SCM Provider (lowercase): $SCM_PROVIDER"
+
+              # Set credentials based on SCM provider
+              if [ "$SCM_PROVIDER" = "harness" ]; then
+                echo "Setting credentials for Harness Code"
+                if [ -n "$HARNESS_API_KEY" ]; then
+                  TOKEN="${HARNESS_API_KEY}"
+                  echo "Using Harness API Key for authentication"
+                else
+                  TOKEN="${SCM_TOKEN}"
+                  echo "Using Git Connector token for authentication"
+                fi
+                NETRC_USERNAME="${DRONE_NETRC_USERNAME}"
+                NETRC_PASSWORD="${DRONE_NETRC_PASSWORD}"
+              else
+                echo "Setting credentials for $SCM_PROVIDER"
+                if [ -n "$DRONE_REPO_LINK" ]; then
+                  NETRC_USERNAME=$(echo "$DRONE_REPO_LINK" | sed -E 's|https?://[^/]+/([^/]+)/.*|\1|')
+                  echo "Extracted username from DRONE_REPO_LINK: $NETRC_USERNAME"
+                else
+                  NETRC_USERNAME="${DRONE_NETRC_USERNAME}"
+                fi
+                TOKEN="${SCM_TOKEN}"
+                NETRC_PASSWORD="${SCM_TOKEN}"
+              fi
+
+              # Construct base URL (IMPORTANT!)
+              BASE_URL="${DRONE_SYSTEM_PROTO}://${DRONE_SYSTEM_HOST}"
+
+              # Export for next step
+              echo "SCM_PROVIDER=$SCM_PROVIDER" >> $DRONE_OUTPUT
+              echo "TOKEN=$TOKEN" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "NETRC_USERNAME=$NETRC_USERNAME" >> $DRONE_OUTPUT
+              echo "NETRC_PASSWORD=$NETRC_PASSWORD" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "BASE_URL=$BASE_URL" >> $DRONE_OUTPUT
+              echo "Detected SCM Provider: $SCM_PROVIDER"
+            env:
+              HARNESS_API_KEY: <+inputs.harnessKey>
+              SCM_TOKEN: <+inputs.gitConnector.token>
+
+        - name: push_and_create_pr
+          id: step4
+          run:
+            container:
+              image: himanshu6956/create-pr-plugin:latest
+            env:
+              # Core Plugin Settings
+              PLUGIN_SCM_PROVIDER: <+pipeline.stages.stage1.steps.step3.output.outputVariables.SCM_PROVIDER>
+              PLUGIN_TOKEN: <+pipeline.stages.stage1.steps.step3.output.outputVariables.TOKEN>
+              PLUGIN_REPO: ${{inputs.repo}}
+              PLUGIN_SOURCE_BRANCH: ${{inputs.branch}}
+
+              # Git Authentication (Netrc)
+              PLUGIN_NETRC_MACHINE: <+env.DRONE_NETRC_MACHINE>
+              PLUGIN_NETRC_USERNAME: <+pipeline.stages.stage1.steps.step3.output.outputVariables.NETRC_USERNAME>
+              PLUGIN_NETRC_PASSWORD: <+pipeline.stages.stage1.steps.step3.output.outputVariables.NETRC_PASSWORD>
+
+              # Branch Configuration
+              PLUGIN_BRANCH_SUFFIX: go-upgrade-agent
+              PLUGIN_UNIQUE_PER_EXECUTION: "true"
+              PLUGIN_FORCE_PUSH: "true"
+
+              # Commit Configuration
+              PLUGIN_COMMIT_MESSAGE: "Go upgrade: automated changes by Harness AI"
+
+              # Git Operations
+              PLUGIN_PUSH_CHANGES: "true"
+
+              # Pull Request Configuration
+              PLUGIN_CREATE_PR: "true"
+              PLUGIN_PR_TITLE: "Go Upgrade: Automated changes by Harness AI"
+              PLUGIN_PR_DESCRIPTION: "Automated Go upgrade changes created by go-upgrade-agent. Please review the changes before merging."
+              PLUGIN_IS_DRAFT: "false"
+              PLUGIN_BYPASS_RULES: "false"
+
+              # Harness Code Specific Settings (used only when SCM_PROVIDER=harness)
+              PLUGIN_HARNESS_ACCOUNT_ID: <+env.HARNESS_ACCOUNT_ID>
+              PLUGIN_HARNESS_ORG_ID: <+env.HARNESS_ORG_ID>
+              PLUGIN_HARNESS_PROJECT_ID: <+env.HARNESS_PROJECT_ID>
+              PLUGIN_HARNESS_BASE_URL: <+pipeline.stages.stage1.steps.step3.output.outputVariables.BASE_URL>
+
+              # Debug & Output
+              PLUGIN_DEBUG: "false"
+              PLUGIN_OUTPUT_FILE: <+env.DRONE_OUTPUT>
+
+      platform:
+        os: linux
+        arch: arm64
+  inputs:
+    llmConnector:
+      type: connector
+      description: LLM connector for Claude AI (Anthropic).
+    harnessKey:
+      type: secret
+      default: harness_api_key
+      description: Harness API key for PR creation.
+    gitConnector:
+      type: connector
+      description: Git connector for repository access.
+    repo:
+      type: string
+      description: Repository name (e.g., my-service).
+    branch:
+      type: string
+      default: main
+      description: The branch to clone from and create PR against (defaults to main).
+    prompt:
+      type: string
+      required: true
+      description: The prompt for the coding agent (e.g., target Go version and scope of changes).
