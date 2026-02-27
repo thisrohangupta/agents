@@ -32,6 +32,20 @@ pipeline:
             script: |-
               git add -A
               git diff --cached
+        - name: go_build
+          run:
+            container:
+              image: golang:1.22-bookworm
+            script: |-
+              cd /harness
+              go build ./...
+        - name: go_test
+          run:
+            container:
+              image: golang:1.22-bookworm
+            script: |-
+              cd /harness
+              go test ./...
         - name: fix_env_variables
           id: step3
           run:
