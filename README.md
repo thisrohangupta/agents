@@ -6,6 +6,7 @@ This repository stores all system agent templates for Harness agents.
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Available Templates](#available-templates)
 - [Template Structure](#template-structure)
 - [Adding a New Template](#adding-a-new-template)
 - [Template Registration](#template-registration)
@@ -23,6 +24,23 @@ Agent templates are modular pipeline definitions that encapsulate:
 - **Documentation** (usage guides, capabilities, examples)
 
 The Agents service automatically discovers and registers templates from this repository, making them available for deployment and execution.
+
+---
+
+## Available Templates
+
+The following agent templates are currently available in this repository:
+
+| Template Name | Description | Version |
+|---------------|-------------|---------|
+| **autofix** | Automatically identifies and fixes bugs, errors, and issues in codebases | 1.0.0 |
+| **code-coverage** | AI-powered agent that automatically analyzes codebases and generates comprehensive unit tests to increase coverage | 1.0.0 |
+| **codereview** | Automated code review agent that analyzes pull requests and provides feedback | 1.0.0 |
+| **ffcleanup** | Feature flag cleanup agent that identifies and removes unused feature flags | 1.0.0 |
+| **manifest-remediator** | Remediates issues in Kubernetes manifests and deployment configurations | 1.0.0 |
+| **onboarding** | Onboarding agent that imports repositories into Harness Code and auto-generates CI pipelines using AI analysis | 1.0.0 |
+| **react-upgrade** | AI-powered coding agent that automates React upgrades and code modifications using custom prompts | 1.0.0 |
+| **zero-day-remediation** | Automatically identifies and remediates critical vulnerabilities in your software supply chain by proposing fixes and creating pull requests | 1.0.0 |
 
 ---
 
@@ -258,8 +276,8 @@ Provides user-facing documentation for the agent template. When present, this is
 
 ### Naming Conventions
 
-- ✅ Use Sentence Case: `My Agent`, `Code Coverage`, `Library Upgrade`, `Autofix`, `Manifest Rendering`
-- ❌ Avoid: `MyAgent`, `my_agent`, `MYAGENT`, `my-agent`, `code-scanner`
+- ✅ Use lowercase with hyphens: `code-coverage`, `react-upgrade`, `zero-day-remediation`, `manifest-remediator`
+- ❌ Avoid: `MyAgent`, `my_agent`, `MYAGENT`, `Code-Coverage`, `codeScanner`
 
 ### Documentation
 

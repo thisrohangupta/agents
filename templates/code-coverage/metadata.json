@@ -1,5 +1,5 @@
 {
-    "name": "Code Coverage",
+    "name": "code-coverage",
     "description": "AI-powered agent that automatically analyzes codebases and generates comprehensive unit tests to increase coverage",
     "version": "1.0.0"
 }
