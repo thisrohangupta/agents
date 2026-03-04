@@ -34,13 +34,13 @@ The following agent templates are currently available in this repository:
 | Template Name | Description | Version |
 |---------------|-------------|---------|
 | **autofix** | Automatically identifies and fixes bugs, errors, and issues in codebases | 1.0.0 |
-| **code-coverage** | AI-powered agent that automatically analyzes codebases and generates comprehensive unit tests to increase coverage | 1.0.0 |
+| **code_coverage** | AI-powered agent that automatically analyzes codebases and generates comprehensive unit tests to increase coverage | 1.0.0 |
 | **codereview** | Automated code review agent that analyzes pull requests and provides feedback | 1.0.0 |
 | **ffcleanup** | Feature flag cleanup agent that identifies and removes unused feature flags | 1.0.0 |
-| **manifest-remediator** | Remediates issues in Kubernetes manifests and deployment configurations | 1.0.0 |
+| **manifest_remediator** | Remediates issues in Kubernetes manifests and deployment configurations | 1.0.0 |
 | **onboarding** | Onboarding agent that imports repositories into Harness Code and auto-generates CI pipelines using AI analysis | 1.0.0 |
-| **react-upgrade** | AI-powered coding agent that automates React upgrades and code modifications using custom prompts | 1.0.0 |
-| **zero-day-remediation** | Automatically identifies and remediates critical vulnerabilities in your software supply chain by proposing fixes and creating pull requests | 1.0.0 |
+| **react_upgrade** | AI-powered coding agent that automates React upgrades and code modifications using custom prompts | 1.0.0 |
+| **zero_day_remediation** | Automatically identifies and remediates critical vulnerabilities in your software supply chain by proposing fixes and creating pull requests | 1.0.0 |
 
 ---
 
@@ -76,10 +76,10 @@ Follow these steps to add a new agent template:
 
 ### 1. Create Template Directory
 
-Create a new directory under `templates/` with your agent's name (use lowercase, hyphen-separated names):
+Create a new directory under `templates/` with your agent's name (use lowercase, underscore-separated names):
 
 ```bash
-mkdir -p templates/my-agent
+mkdir -p templates/my_agent
 ```
 
 ### 2. Create Required Files
@@ -90,7 +90,7 @@ Define your template's metadata:
 
 ```json
 {
-  "name": "my-agent",
+  "name": "my_agent",
   "description": "Brief description of what this agent does",
   "version": "1.0.0"
 }
@@ -110,9 +110,9 @@ pipeline:
   repo:
     name: <+inputs.repo>
   stages:
-    - name: my-agent-stage
+    - name: my_agent_stage
       steps:
-        - name: my-agent-step
+        - name: my_agent_step
           run:
             container:
               image: your-registry/your-image:tag
@@ -193,8 +193,8 @@ Provide an SVG logo for your agent to enhance visual identification in the UI:
 ### 3. Commit and Push
 
 ```bash
-git add templates/my-agent/
-git commit -m "Add my-agent template"
+git add templates/my_agent/
+git commit -m "Add my_agent template"
 git push origin main
 ```
 
@@ -244,7 +244,7 @@ Optional enhancements:
 
 ```json
 {
-  "name": "string", // Template identifier (lowercase, alphanumeric, hyphens)
+  "name": "string", // Template identifier (lowercase, alphanumeric, underscores)
   "description": "string", // Brief description (1-2 sentences)
   "version": "string" // Semantic version (MAJOR.MINOR.PATCH)
 }
@@ -276,8 +276,8 @@ Provides user-facing documentation for the agent template. When present, this is
 
 ### Naming Conventions
 
-- ✅ Use lowercase with hyphens: `code-coverage`, `react-upgrade`, `zero-day-remediation`, `manifest-remediator`
-- ❌ Avoid: `MyAgent`, `my_agent`, `MYAGENT`, `Code-Coverage`, `codeScanner`
+- ✅ Use lowercase with underscores: `code_coverage`, `react_upgrade`, `zero_day_remediation`, `manifest_remediator`
+- ❌ Avoid: `MyAgent`, `my-agent`, `MYAGENT`, `Code-Coverage`, `codeScanner`
 
 ### Documentation
 

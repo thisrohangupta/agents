@@ -1,5 +1,5 @@
 {
-    "name": "feature-flag-cleanup",
+    "name": "feature_flag_cleanup",
     "description": "Feature Flag Cleanup is an agent that will help you cleaning up stales feature flags from your code",
     "version": "1.0.0"
 }
