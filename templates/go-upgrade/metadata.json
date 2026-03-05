@@ -1,0 +1,5 @@
+{
+  "name": "go upgrade",
+  "description": "Go upgrade is an agent that upgrades Go versions in your repository and opens a pull request with updated go.mod, go.sum, Dockerfiles, and CI configs.",
+  "version": "1.0.0"
+}
