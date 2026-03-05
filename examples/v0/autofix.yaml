@@ -1,0 +1,641 @@
+pipeline:
+  projectIdentifier: Harness_Commons
+  orgIdentifier: PROD
+  identifier: gitnessprcheck
+  name: gitnessPrCheck
+  properties:
+    ci:
+      codebase:
+        repoName: gitness
+        build: <+input>
+  stages:
+    - parallel:
+        - stage:
+            name: PR check
+            identifier: prcheck
+            description: ""
+            type: CI
+            spec:
+              cloneCodebase: true
+              platform:
+                os: Linux
+                arch: Amd64
+              runtime:
+                type: Cloud
+                spec: {}
+              execution:
+                steps:
+                  - step:
+                      type: Action
+                      name: setup go
+                      identifier: setup_go
+                      spec:
+                        uses: actions/setup-go@v3
+                        with:
+                          go-version: 1.24.3
+                  - step:
+                      type: Run
+                      name: Build UI
+                      identifier: Build_UI
+                      spec:
+                        connectorRef: org.gcpgarsetup
+                        image: us-west1-docker.pkg.dev/gar-setup/docker/node:18
+                        shell: Sh
+                        command: |-
+                          cd web
+                          node --version
+                          yarn install
+                          yarn build
+                          cd ..
+                  - step:
+                      type: Run
+                      name: build go
+                      identifier: Run_1
+                      spec:
+                        shell: Sh
+                        command: |-
+                          # Update your package manager
+                          sudo apt update
+
+                          # Install the Protocol Buffers compiler
+                          sudo apt install protobuf-compiler
+
+                          # Verify Go is installed and check its version
+                          go version
+
+                          # Install the Google Protobuf Go package
+                          go get google.golang.org/protobuf
+
+                          # Install or update protoc-gen-go
+                          go get -u google.golang.org/protobuf/cmd/protoc-gen-go
+                          echo $PATH
+                          export GOPATH=$(go env GOPATH)
+                          export PATH=$PATH:$GOPATH/bin
+                          echo $PATH
+                          # which protoc-gen-go
+                          go mod tidy
+                          # protoc-gen-go --version
+                          make dep
+                          make tools 
+
+                          # UI build
+
+                          # cd web
+                          # yarn install
+                          # yarn build
+                          # cd ..
+
+                          make build
+                  - parallel:
+                      - step:
+                          type: Run
+                          name: go Lint
+                          identifier: go_Lint
+                          spec:
+                            shell: Sh
+                            command: |-
+                              set -ex
+                              make lint-full
+                              # git status
+                              # golangci-lint run --timeout=5m --verbose || true
+                      - step:
+                          type: Run
+                          name: ui lint
+                          identifier: ui_lint
+                          spec:
+                            connectorRef: org.gcpgarsetup
+                            image: us-west1-docker.pkg.dev/gar-setup/docker/node:18
+                            shell: Sh
+                            command: |-
+                              cd web
+                              yarn check:all
+                      - step:
+                          type: Run
+                          name: test
+                          identifier: test
+                          spec:
+                            shell: Sh
+                            command: make test
+                      - step:
+                          type: Run
+                          name: wire check
+                          identifier: wire_check
+                          spec:
+                            shell: Sh
+                            command: |-
+                              #!/bin/bash
+
+                              # Run go wire
+                              make force-wire
+
+                              # Check for git diff
+                              git_diff=$(git diff cmd/gitness/wire_gen.go)
+
+                              if [ -n "$git_diff" ]; then
+                                echo "Error: There are uncommitted changes. Please commit your changes before running go wire."
+                                echo "Git diff output:"
+                                echo "$git_diff"
+                                exit 1
+                              else
+                                echo "No uncommitted changes. go wire completed successfully."
+                              fi
+                          description: Check if user forgot to push wire changes
+                      - step:
+                          type: Run
+                          name: security
+                          identifier: security
+                          spec:
+                            shell: Sh
+                            command: golangci-lint run --timeout=5m --verbose --enable-only gosec --allow-parallel-runners --new-from-rev 9a3f9ae28af567a3deaeafa3ca79c95c93da0988 --whole-files
+                          when:
+                            stageStatus: Success
+                            condition: true==false
+                      - step:
+                          type: Run
+                          name: modernize
+                          identifier: modernize
+                          spec:
+                            shell: Bash
+                            command: |-
+                              # Check if "modernize" target exists in the Makefile
+                              if ! make -n modernize >/dev/null 2>&1; then
+                                echo "Target 'modernize' does not exist in Makefile. Exiting 0."
+                                exit 0
+                              fi
+
+                              # Run make modernize
+                              if ! make modernize; then
+                                echo "make modernize failed."
+                                exit 1
+                              fi
+
+                              # Check if there is any git diff output
+                              if git diff --exit-code; then
+                                # No difference found
+                                exit 0
+                              else
+                                # Differences found
+                                exit 1
+                              fi
+                          failureStrategies:
+                            - onFailure:
+                                errors:
+                                  - AllErrors
+                                action:
+                                  type: Ignore
+                          when:
+                            stageStatus: Success
+                            condition: true==false
+        - stage:
+            name: Registry check
+            identifier: registry_check
+            description: ""
+            type: CI
+            spec:
+              cloneCodebase: true
+              platform:
+                os: Linux
+                arch: Amd64
+              runtime:
+                type: Cloud
+                spec: {}
+              execution:
+                steps:
+                  - step:
+                      type: Action
+                      name: setup go
+                      identifier: setup_go
+                      spec:
+                        uses: actions/setup-go@v3
+                        with:
+                          go-version: "1.22"
+                  - step:
+                      type: Run
+                      name: Build UI
+                      identifier: Build_UI
+                      spec:
+                        connectorRef: org.gcpgarsetup
+                        image: us-west1-docker.pkg.dev/gar-setup/docker/node:18
+                        shell: Sh
+                        command: |-
+                          cd web
+                          node --version
+                          yarn install
+                          yarn build:ar
+                          cd ..
+                      when:
+                        stageStatus: Success
+                  - step:
+                      type: Run
+                      name: OCI Conformance Test
+                      identifier: OCI_Conformance_Test
+                      spec:
+                        shell: Sh
+                        command: |-
+                          export GITNESS_URL_REGISTRY=http://localhost:3000
+                          make ar-conformance-test
+                      description: OCI Conformance Test
+        - stage:
+            name: Coverage Check
+            identifier: coverage_check
+            description: ""
+            type: CI
+            spec:
+              cloneCodebase: true
+              platform:
+                os: Linux
+                arch: Amd64
+              runtime:
+                type: Cloud
+                spec: {}
+              execution:
+                steps:
+                  - step:
+                      type: Action
+                      name: setup go
+                      identifier: setup_go
+                      spec:
+                        uses: actions/setup-go@v3
+                        with:
+                          go-version: "1.22"
+                  - step:
+                      type: Run
+                      name: Default coverage check
+                      identifier: OCI_Conformance_Test
+                      spec:
+                        shell: Sh
+                        command: |-
+                          set -ex
+                          echo "machine git0.harness.io/
+                            login abhinav-harness
+                            password $HARNESS_CODE_TOKEN" >> ~/.netrc
+
+                          cat  ~/.netrc
+                          git config --global credential.helper "store --file=.git/credentials"
+                          echo "https://bot-harness:${HARNESS_CODE_TOKEN}@git0.harness.io" > .git/credentials
+                          git remote set-url origin https://bot-harness:${HARNESS_CODE_TOKEN}@git0.harness.io/l7B_kbSEQD2wjrM7PShm5w/PROD/Harness_Commons/gitness.git
+                          echo $HARNESS_CODE_TOKEN
+                          git fetch origin main
+                          git checkout <+pipeline.variables.COMMIT_SHA>
+                          ./scripts/coverage/test_script.sh main
+                        envVariables:
+                          GITHUB_TOKEN: <+pipeline.variables.GITHUB_TOKEN>
+                          HARNESS_CODE_TOKEN: <+pipeline.variables.HARNESS_CODE_TOKEN>
+                      description: Default coverage check
+            when:
+              pipelineStatus: Success
+              condition: true==false
+        - stage:
+            name: BuildCode
+            identifier: BuildCode
+            description: ""
+            type: CI
+            spec:
+              cloneCodebase: false
+              platform:
+                os: Linux
+                arch: Amd64
+              runtime:
+                type: Cloud
+                spec: {}
+              execution:
+                steps:
+                  - step:
+                      type: GitClone
+                      name: clone harness code
+                      identifier: clone_harness_code
+                      spec:
+                        repoName: harness-code
+                        cloneDirectory: /harness/code
+                        build:
+                          type: branch
+                          spec:
+                            branch: main
+                  - step:
+                      type: Run
+                      name: clone gitness
+                      identifier: clone_gitness
+                      spec:
+                        shell: Sh
+                        command: |-
+                          set -ex
+                          echo "machine git0.harness.io/
+                            login abhinav-harness
+                            password $HARNESS_CODE_TOKEN" >> ~/.netrc
+
+                          cat  ~/.netrc
+                          git config --global credential.helper "store --file=/harness/code/.git/credentials"
+                          echo "https://bot-harness:${HARNESS_CODE_TOKEN}@git0.harness.io" > /harness/code/.git/credentials
+                          # git config --global url."https://${HARNESS_CODE_TOKEN}:x-oauth-basic@git0.harness.io/l7B_kbSEQD2wjrM7PShm5w/PROD/Harness_Commons/".insteadOf "https://git0.harness.io/l7B_kbSEQD2wjrM7PShm5w/PROD/Harness_Commons/"
+                          cd /harness/code/
+                          git submodule set-url gitness https://bot-harness:${HARNESS_CODE_TOKEN}@git0.harness.io/l7B_kbSEQD2wjrM7PShm5w/PROD/Harness_Commons/gitness.git
+
+                          cd gitness
+                          git submodule update --init --recursive
+                          git checkout <+pipeline.variables.COMMIT_SHA>
+                          cd ..
+                        envVariables:
+                          GITHUB_TOKEN: <+pipeline.variables.GITHUB_TOKEN>
+                          HARNESS_CODE_TOKEN: <+pipeline.variables.HARNESS_CODE_TOKEN>
+                  - parallel:
+                      - step:
+                          type: Action
+                          name: setup go
+                          identifier: setup_go
+                          spec:
+                            uses: actions/setup-go@v3
+                            with:
+                              go-version: "1.22"
+                      - step:
+                          type: Run
+                          name: auto ai ui setup
+                          identifier: auto_ai_ui_setup
+                          spec:
+                            connectorRef: org.dockerhub_harness_jenkins
+                            image: node:20
+                            shell: Sh
+                            command: |-
+                              set -ex
+                              #==========autoai================
+
+                              DIRECTORY="code/autoai/web"
+                              ls -lrta
+                              if [ -d "$DIRECTORY" ]; then
+                                echo "Directory '$DIRECTORY' exists."
+                                cd $DIRECTORY
+                                echo @harness:registry=https://npm.pkg.github.com > .npmrc
+                                echo "//npm.pkg.github.com/:_authToken="$GITHUB_TOKEN >> .npmrc
+                                echo always-auth=true >> .npmrc
+                                cp .npmrc ../..
+
+                                ls -lrta
+                                NODE_ENV=development yarn
+                                yarn install
+                                cd ../..
+                                ls -lrta
+                                make build-autoai-ui
+                              fi
+                              #==========autoai================
+                            envVariables:
+                              GITHUB_TOKEN: <+pipeline.variables.GITHUB_TOKEN>
+                  - step:
+                      type: Run
+                      name: install deps
+                      identifier: install_deps
+                      spec:
+                        shell: Sh
+                        command: |-
+                          set -ex
+                          # Update your package manager
+                          sudo apt update
+
+                          # Install the Protocol Buffers compiler
+                          sudo apt install protobuf-compiler
+                          pwd
+                          # Verify Go is installed and check its version
+                          cd /harness/code/
+                          go version
+                          echo $GITHUB_TOKEN
+                          git config --global url."https://${GITHUB_TOKEN}:x-oauth-basic@github.com/harness".insteadOf "https://github.com/harness"
+                          echo "machine git0.harness.io login abhinav-harness password $HARNESS_CODE_TOKEN" > ~/.netrc
+
+                          go env -w GOPRIVATE=github.com/harness/*,git0.harness.io
+
+                          # Install the Google Protobuf Go package
+                          go get google.golang.org/protobuf
+
+                          # Install or update protoc-gen-go
+                          go get -u google.golang.org/protobuf/cmd/protoc-gen-go
+                          echo $PATH
+                          export GOPATH=$(go env GOPATH)
+                          export PATH=$PATH:$GOPATH/bin
+                          echo $PATH
+                          # which protoc-gen-go
+                          # go mod tidy
+                          # protoc-gen-go --version
+                          make dep
+                          make tools 
+                          # cd web
+                          # yarn install
+                          # yarn build
+                          # cd ..
+                          output=$(make force-wire 2>&1)
+                          if echo "$output" | grep -q "exit status 1"; then
+                            echo "Error occurred during force-wire"
+                            echo "$output" # Optionally, print the output to understand the error
+                            exit 1
+                          fi
+                        envVariables:
+                          GITHUB_TOKEN: <+pipeline.variables.GITHUB_TOKEN>
+                          HARNESS_CODE_TOKEN: <+pipeline.variables.HARNESS_CODE_TOKEN>
+                  - step:
+                      type: Run
+                      name: build harness code
+                      identifier: Run_1
+                      spec:
+                        shell: Sh
+                        command: |-
+                          cd /harness/code/
+                          make build-gitness
+                      description: build harness code with specified gitness commit
+              caching:
+                enabled: false
+                paths: []
+            when:
+              pipelineStatus: Success
+              condition: <+pipeline.variables.COMMIT_SHA>!=""
+        - stage:
+            name: Build CDE
+            identifier: Build_CDE
+            description: ""
+            type: CI
+            spec:
+              cloneCodebase: false
+              platform:
+                os: Linux
+                arch: Amd64
+              runtime:
+                type: Cloud
+                spec: {}
+              execution:
+                steps:
+                  - step:
+                      type: GitClone
+                      name: clone harness code
+                      identifier: clone_harness_code
+                      spec:
+                        repoName: harness-code
+                        cloneDirectory: /harness/code
+                        build:
+                          type: branch
+                          spec:
+                            branch: main
+                  - step:
+                      type: Run
+                      name: clone gitness
+                      identifier: clone_gitness
+                      spec:
+                        shell: Sh
+                        command: |-
+                          set -ex
+                          echo "machine git0.harness.io/
+                            login abhinav-harness
+                            password $HARNESS_CODE_TOKEN" >> ~/.netrc
+
+                          cat  ~/.netrc
+                          git config --global credential.helper "store --file=/harness/code/.git/credentials"
+                          echo "https://bot-harness:${HARNESS_CODE_TOKEN}@git0.harness.io" > /harness/code/.git/credentials
+                          echo $HARNESS_CODE_TOKEN
+                          # git config --global url."https://${HARNESS_CODE_TOKEN}:x-oauth-basic@git0.harness.io/l7B_kbSEQD2wjrM7PShm5w/PROD/Harness_Commons/".insteadOf "https://git0.harness.io/l7B_kbSEQD2wjrM7PShm5w/PROD/Harness_Commons/"
+                          cd /harness/code/
+                          git submodule set-url gitness https://bot-harness:${HARNESS_CODE_TOKEN}@git0.harness.io/l7B_kbSEQD2wjrM7PShm5w/PROD/Harness_Commons/gitness.git
+                          cd gitness
+                          git submodule update --init --recursive
+                          git checkout <+pipeline.variables.COMMIT_SHA>
+                          cd ..
+                        envVariables:
+                          GITHUB_TOKEN: <+pipeline.variables.GITHUB_TOKEN>
+                          HARNESS_CODE_TOKEN: <+pipeline.variables.HARNESS_CODE_TOKEN>
+                  - step:
+                      type: Action
+                      name: setup go
+                      identifier: setup_go
+                      spec:
+                        uses: actions/setup-go@v3
+                        with:
+                          go-version: "1.22"
+                  - step:
+                      type: Run
+                      name: install deps
+                      identifier: install_deps
+                      spec:
+                        shell: Sh
+                        command: |-
+                          set -ex
+                          # Update your package manager
+                          sudo apt update
+
+                          # Install the Protocol Buffers compiler
+                          sudo apt install protobuf-compiler
+                          pwd
+                          # Verify Go is installed and check its version
+                          cd /harness/code/
+                          go version
+                          echo $GITHUB_TOKEN
+                          git config --global url."https://${GITHUB_TOKEN}:x-oauth-basic@github.com/harness".insteadOf "https://github.com/harness"
+                          echo "machine git0.harness.io login abhinav-harness password $HARNESS_CODE_TOKEN" > ~/.netrc
+
+                          go env -w GOPRIVATE=github.com/harness/*,git0.harness.io
+                          # Install the Google Protobuf Go package
+                          go get google.golang.org/protobuf
+
+                          # Install or update protoc-gen-go
+                          go get -u google.golang.org/protobuf/cmd/protoc-gen-go
+                          echo $PATH
+                          export GOPATH=$(go env GOPATH)
+                          export PATH=$PATH:$GOPATH/bin
+                          echo $PATH
+                          # which protoc-gen-go
+                          # go mod tidy
+                          # protoc-gen-go --version
+                          make dep
+                          make tools 
+                          # cd web
+                          # yarn install
+                          # yarn build
+                          # cd ..
+                          output=$(make force-wire 2>&1)
+                          if echo "$output" | grep -q "exit status 1"; then
+                            echo "Error occurred during force-wire"
+                            echo "$output" # Optionally, print the output to understand the error
+                            exit 1
+                          fi
+                        envVariables:
+                          GITHUB_TOKEN: <+pipeline.variables.GITHUB_TOKEN>
+                          HARNESS_CODE_TOKEN: <+pipeline.variables.HARNESS_CODE_TOKEN>
+                  - step:
+                      type: Run
+                      name: build cde manager
+                      identifier: build_cde_manager
+                      spec:
+                        shell: Sh
+                        command: |-
+                          cd /harness/code/
+                          make build-cde-manager-with-ui
+              caching:
+                enabled: false
+                paths: []
+            when:
+              pipelineStatus: Success
+              condition: <+pipeline.variables.COMMIT_SHA>!=""
+    - stage:
+        name: autofix
+        identifier: autofix
+        description: ""
+        type: Pipeline
+        spec:
+          org: PROD
+          pipeline: autofixPipeline
+          project: Harness_Commons
+          inputs:
+            identifier: autofixPipeline
+            stages:
+              - stage:
+                  identifier: AutofixExecution
+                  type: CI
+                  spec:
+                    execution:
+                      steps:
+                        - step:
+                            identifier: fetch_failed_steps
+                            type: Run
+                            spec:
+                              envVariables:
+                                PIPELINE_URL: <+input>.default(<+pipeline.executionUrl>)
+                        - parallel:
+                            - stepGroup:
+                                identifier: ProceedPath
+                                steps:
+                                  - step:
+                                      identifier: FetchPipelineYaml
+                                      type: Run
+                                      spec:
+                                        envVariables:
+                                          PIPELINE_URL: <+input>.default(<+pipeline.executionUrl>)
+            properties:
+              ci:
+                codebase:
+                  repoName: <+input>
+                  build: <+input>
+            variables:
+              - name: TARGET_BRANCH
+                type: String
+                value: <+input>.default(<+trigger.payload.pull_req.target_branch>)
+        when:
+          pipelineStatus: All
+          condition: 1==0
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: Ignore
+  variables:
+    - name: COMMIT_SHA
+      type: String
+      description: ""
+      required: false
+      value: <+input>
+    - name: GITHUB_TOKEN
+      type: Secret
+      description: ""
+      required: false
+      value: org.githubbotharnesstoken_hsm
+    - name: HARNESS_CODE_TOKEN
+      type: Secret
+      description: ""
+      required: false
+      value: account.bot_harness_account_token
+  description: gitness repo pr check
+  tags:
+    Owner: CODE
