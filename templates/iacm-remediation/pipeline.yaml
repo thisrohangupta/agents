@@ -11,20 +11,48 @@ pipeline:
     - name: iacm_remediation
       id: stage1
       steps:
+        - name: iacm_bootstrap
+          id: bootstrap
+          run:
+            container:
+              image: sunnyagarwalhs/iacm-bootstrap-agent:latest
+            with:
+              working_directory: /harness
+              repo_type: <+inputs.repoType>
+              tfvar_file: <+inputs.tfvarFile>
+              output_dir: /harness/drift-output
+              plan_output_file: plan.json
+              detailed_logging: "true"
+              aws_access_key: <+inputs.awsConnector.accessKey>
+              aws_secret_key: <+inputs.awsConnector.secretKey>
+              aws_region: <+inputs.awsRegion>
+
+        - name: no_drift_detected
+          id: no_drift
+          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "false"
+          run:
+            shell: bash
+            script: |-
+              echo "✅ No infrastructure drift detected!"
+              echo "The infrastructure state matches the source code."
+              echo "No remediation needed."
+
         - name: iacm_remediation_agent
           id: step1
+          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "true"
           run:
             container:
               image: sunnyagarwalhs/iacm-remediation-agent:latest
             with:
               working_directory: /harness
-              plan_json: <+inputs.planJson>
-              tfvar_content: <+inputs.tfvarContent>
+              plan_json_file: /harness/drift-output/plan.json
+              tfvar_file: <+inputs.tfvarFile>
               detailed_logging: "true"
             env:
               ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
         - name: show_git_diff
           id: step2
+          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "true"
           run:
             shell: bash
             script: |-
@@ -32,6 +60,7 @@ pipeline:
               git diff --cached
         - name: fix_env_variables
           id: step3
+          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "true"
           run:
             shell: bash
             script: |-
@@ -86,6 +115,7 @@ pipeline:
 
         - name: push_and_create_pr
           id: step4
+          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "true"
           run:
             container:
               image: himanshu6956/create-pr-plugin:latest
@@ -127,21 +157,31 @@ pipeline:
   inputs:
     llmConnector:
       type: connector
+      description: Anthropic API connector for Claude AI
+    awsConnector:
+      type: connector
+      description: AWS connector for infrastructure access
     harnessKey:
       type: secret
       default: harness_api_key
     gitConnector:
       type: connector
+      description: Git connector for repository access
     repo:
       type: string
+      description: Repository name
     branch:
       type: string
       default: main
       description: The branch to clone from and create PR against (defaults to main)
-    planJson:
+    repoType:
       type: string
-      required: true
-      description: The drifted Terraform/OpenTofu plan in JSON format
-    tfvarContent:
+      default: opentofu
+      description: Repository type - terraform or opentofu (defaults to opentofu)
+    awsRegion:
       type: string
-      description: Optional tfvar file content to provide additional context for drift remediation
+      default: us-east-1
+      description: AWS region for infrastructure
+    tfvarFile:
+      type: string
+      description: Optional path to tfvar file (relative to working directory) for plan and remediation context
