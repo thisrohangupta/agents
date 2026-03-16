@@ -13,7 +13,7 @@ pipeline:
         - name: remediation_agent
           run:
             container:
-              image: anewdocker25/mydockerhub:remediation-agent
+              image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/remediation-agent-plugin:main
             with:
               detailed_logging: "true"
               harness_api_key: <+inputs.harnessKey>
@@ -25,7 +25,7 @@ pipeline:
         - name: coding_agent
           run:
             container:
-              image: anewdocker25/mydockerhub:coding-agent
+              image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/coding-agent-plugin:main
             with:
               detailed_logging: "true"
               max_iterations: "50"
@@ -103,7 +103,7 @@ pipeline:
         - name: push_and_create_pr
           run:
             container:
-              image: himanshu6956/create-pr-plugin:latest
+              image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/create-pr-plugin:main
             env:
               # Core Plugin Settings
               PLUGIN_SCM_PROVIDER: <+pipeline.stages.autofix_1.steps.fix_env_variables_1.output.outputVariables.SCM_PROVIDER>

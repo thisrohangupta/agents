@@ -15,7 +15,7 @@ pipeline:
           id: step1
           run:
             container:
-              image: anewdocker25/mydockerhub:coding-agent
+              image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/coding-agent-plugin:main
             with:
               detailed_logging: "true"
               max_iterations: "300"
