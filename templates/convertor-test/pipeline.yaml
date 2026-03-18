@@ -12,6 +12,7 @@ agent:
             task: <+inputs.TASK>
             max_turns: 250
             with:
+              allowed_tools: Read,Edit,Bash,Glob,Grep,Write
               log_file: .agent/output/mcp-test-log.jsonl
               use_bedrock: "true"
             env:
