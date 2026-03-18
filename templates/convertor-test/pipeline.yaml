@@ -21,7 +21,7 @@ agent:
               AWS_BEARER_TOKEN_BEDROCK: <+secrets.getValue("aws_bedrock_claude_code_ha")>
               AWS_REGION: us-east-1
               CLAUDE_CODE_USE_BEDROCK: "1"
-            task: you have access to harnes mcp and tell me what all the tools you have access to 
+            task: you have access to harnes mcp and tell me what all the tools you have access to. use some get tools to test that harness mcp server is working
             max_turns: 250
             mcp_servers:
               harness:
