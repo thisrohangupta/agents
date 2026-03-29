@@ -1,187 +1,140 @@
-version: "1.0"
 pipeline:
-  clone:
-    depth: 1
-    ref:
-      name: <+inputs.branch>
-      type: branch
-    repo: <+inputs.repo>
-    connector: "<+inputs.gitConnector != null ? inputs.gitConnector.id : ''>"
   stages:
-    - name: iacm_remediation
-      id: stage1
-      steps:
-        - name: iacm_bootstrap
-          id: bootstrap
-          run:
-            container:
-              image: sunnyagarwalhs/iacm-bootstrap-agent:latest
+    - steps:
+        - name: init
+          iacm:
+            uses: openTofuStep@1.0.0
             with:
-              working_directory: /harness
-              repo_type: <+inputs.repoType>
-              tfvar_file: <+inputs.tfvarFile>
-              output_dir: /harness/drift-output
-              plan_output_file: plan.json
-              detailed_logging: "true"
-              aws_access_key: <+inputs.awsConnector.accessKey>
-              aws_secret_key: <+inputs.awsConnector.secretKey>
-              aws_region: <+inputs.awsRegion>
-
-        - name: no_drift_detected
-          id: no_drift
-          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "false"
-          run:
-            shell: bash
-            script: |-
-              echo "✅ No infrastructure drift detected!"
-              echo "The infrastructure state matches the source code."
-              echo "No remediation needed."
-
+              command: init
+        - name: plan
+          iacm:
+            uses: openTofuStep@1.0.0
+            with:
+              command: plan
         - name: iacm_remediation_agent
-          id: step1
-          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "true"
+          id: remediate
           run:
             container:
-              image: sunnyagarwalhs/iacm-remediation-agent:latest
+              connector: account.harnessImage
+              image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/iacm-remediation-agent-plugin:IAC-5536-iacm-remediation-agent
             with:
-              working_directory: /harness
-              plan_json_file: /harness/drift-output/plan.json
-              tfvar_file: <+inputs.tfvarFile>
-              detailed_logging: "true"
+              ROOT_DIR: <+iacmOutput.rootDir>
             env:
               ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
+              PLUGIN_REMEDIATION_TYPE: <+inputs.remediationType>
+              PLUGIN_RECOMMENDATION: <+inputs.recommendation>
         - name: show_git_diff
-          id: step2
-          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "true"
+          id: git_diff
           run:
             shell: bash
             script: |-
+              cd <+iacmOutput.rootDir>
               git add -A
               git diff --cached
         - name: fix_env_variables
-          id: step3
-          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "true"
+          id: fix_env_variables
           run:
             shell: bash
             script: |-
-              # Get SCM provider from DRONE
-              SCM_PROVIDER="${DRONE_REPO_SCM}"
+              set -euo pipefail
 
-              # Convert "Git" to "harness" for Harness Code repositories
-              if [ "$SCM_PROVIDER" = "Git" ]; then
-                echo "Detected Git SCM, converting to harness"
-                SCM_PROVIDER="harness"
-              fi
+              # Debug: show raw iacmOutput values
+              echo "=== Raw iacmOutput values ==="
+              echo "REPO_TYPE: '$REPO_TYPE'"
+              echo "REPO_URL: '$REPO_URL'"
+              echo "REPO_TOKEN: (length=${#REPO_TOKEN})"
+              echo "ROOT_DIR: '$ROOT_DIR'"
+              echo "==="
 
-              # Convert SCM provider to lowercase for consistency
-              SCM_PROVIDER=$(echo "$SCM_PROVIDER" | tr '[:upper:]' '[:lower:]')
-              echo "SCM Provider (lowercase): $SCM_PROVIDER"
+              # Derive SCM provider from iacmOutput.repoType (e.g. Github, Bitbucket, Gitlab)
+              SCM_PROVIDER=$(echo "$REPO_TYPE" | tr '[:upper:]' '[:lower:]')
+              echo "SCM Provider: $SCM_PROVIDER"
 
-              # Set credentials based on SCM provider
-              if [ "$SCM_PROVIDER" = "harness" ]; then
-                echo "Setting credentials for Harness Code"
-                if [ -n "$HARNESS_API_KEY" ]; then
-                  TOKEN="${HARNESS_API_KEY}"
-                  echo "Using Harness API Key for authentication"
-                else
-                  TOKEN="${SCM_TOKEN}"
-                  echo "Using Git Connector token for authentication"
-                fi
-                NETRC_USERNAME="${DRONE_NETRC_USERNAME}"
-                NETRC_PASSWORD="${DRONE_NETRC_PASSWORD}"
-              else
-                echo "Setting credentials for $SCM_PROVIDER"
-                if [ -n "$DRONE_REPO_LINK" ]; then
-                  NETRC_USERNAME=$(echo "$DRONE_REPO_LINK" | sed -E 's|https?://[^/]+/([^/]+)/.*|\1|')
-                  echo "Extracted username from DRONE_REPO_LINK: $NETRC_USERNAME"
-                else
-                  NETRC_USERNAME="${DRONE_NETRC_USERNAME}"
-                fi
-                TOKEN="${SCM_TOKEN}"
-                NETRC_PASSWORD="${SCM_TOKEN}"
-              fi
+              # Extract netrc machine from repo URL (e.g. github.com)
+              NETRC_MACHINE=$(echo "$REPO_URL" | sed -E 's|https?://([^/]+)/.*|\1|')
+              NETRC_USERNAME=$(echo "$REPO_URL" | sed -E 's|https?://[^/]+/([^/]+)/.*|\1|')
 
-              BASE_URL="${DRONE_SYSTEM_PROTO}://${DRONE_SYSTEM_HOST}"
+              # Extract base URL (protocol + host)
+              BASE_URL=$(echo "$REPO_URL" | sed -E 's|(https?://[^/]+).*|\1|')
+
+              # Extract repo path (owner/repo) from actual git remote, stripping .git suffix
+              ACTUAL_URL=$(cd "$ROOT_DIR" && git remote get-url origin)
+              REPO=$(echo "$ACTUAL_URL" | sed -E 's|https?://[^/]+/||; s|\.git$||')
+
+              cd "$ROOT_DIR"
+
+              # Get branch from the cloned repo
+              SOURCE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+              echo "Repo: $REPO, Branch: $SOURCE_BRANCH"
+
+              # Set up git authentication by embedding token in remote URL
+              CURRENT_URL=$(git remote get-url origin)
+              AUTH_URL=$(echo "$CURRENT_URL" | sed -E "s|https://|https://x-access-token:${REPO_TOKEN}@|")
+              git remote set-url origin "$AUTH_URL"
 
               echo "SCM_PROVIDER=$SCM_PROVIDER" >> $DRONE_OUTPUT
-              echo "TOKEN=$TOKEN" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "TOKEN=$REPO_TOKEN" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "NETRC_MACHINE=$NETRC_MACHINE" >> $DRONE_OUTPUT
               echo "NETRC_USERNAME=$NETRC_USERNAME" >> $DRONE_OUTPUT
-              echo "NETRC_PASSWORD=$NETRC_PASSWORD" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "NETRC_PASSWORD=$REPO_TOKEN" >> $HARNESS_OUTPUT_SECRET_FILE
               echo "BASE_URL=$BASE_URL" >> $DRONE_OUTPUT
-              echo "Detected SCM Provider: $SCM_PROVIDER"
+              echo "REPO=$REPO" >> $DRONE_OUTPUT
+              echo "SOURCE_BRANCH=$SOURCE_BRANCH" >> $DRONE_OUTPUT
+              echo "WORKING_DIR=$(pwd)" >> $DRONE_OUTPUT
             env:
-              HARNESS_API_KEY: <+inputs.harnessKey>
-              SCM_TOKEN: <+inputs.gitConnector.token>
-
+              REPO_TOKEN: <+iacmOutput.repoToken>
+              REPO_URL: <+iacmOutput.repoUrl>
+              REPO_TYPE: <+iacmOutput.repoType>
+              ROOT_DIR: <+iacmOutput.rootDir>
         - name: push_and_create_pr
-          id: step4
-          when: <+pipeline.stages.stage1.steps.bootstrap.output.outputVariables.DRIFT_DETECTED> == "true"
+          id: push_and_create_pr
           run:
             container:
-              image: himanshu6956/create-pr-plugin:latest
+              image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/create-pr-plugin:IAC-5536-iacm-remediation-agent
+              connector: account.harnessImage
             env:
-              PLUGIN_SCM_PROVIDER: <+pipeline.stages.stage1.steps.step3.output.outputVariables.SCM_PROVIDER>
-              PLUGIN_TOKEN: <+pipeline.stages.stage1.steps.step3.output.outputVariables.TOKEN>
-              PLUGIN_REPO: ${{inputs.repo}}
-              PLUGIN_SOURCE_BRANCH: ${{inputs.branch}}
-
-              PLUGIN_NETRC_MACHINE: <+env.DRONE_NETRC_MACHINE>
-              PLUGIN_NETRC_USERNAME: <+pipeline.stages.stage1.steps.step3.output.outputVariables.NETRC_USERNAME>
-              PLUGIN_NETRC_PASSWORD: <+pipeline.stages.stage1.steps.step3.output.outputVariables.NETRC_PASSWORD>
-
+              PLUGIN_SCM_PROVIDER: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.SCM_PROVIDER>
+              PLUGIN_TOKEN: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.TOKEN>
+              PLUGIN_REPO: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.REPO>
+              PLUGIN_SOURCE_BRANCH: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.SOURCE_BRANCH>
+              PLUGIN_WORKING_DIR: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.WORKING_DIR>
+              PLUGIN_NETRC_MACHINE: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.NETRC_MACHINE>
+              PLUGIN_NETRC_USERNAME: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.NETRC_USERNAME>
+              PLUGIN_NETRC_PASSWORD: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.NETRC_PASSWORD>
               PLUGIN_BRANCH_SUFFIX: iacm-drift-remediation
               PLUGIN_UNIQUE_PER_EXECUTION: "true"
               PLUGIN_FORCE_PUSH: "true"
-
               PLUGIN_COMMIT_MESSAGE: "IaCM drift remediation: automated changes by Harness AI"
-
               PLUGIN_PUSH_CHANGES: "true"
-
               PLUGIN_CREATE_PR: "true"
               PLUGIN_PR_TITLE: "IaCM Drift Remediation: Automated changes by Harness AI"
-              PLUGIN_PR_DESCRIPTION: "Automated infrastructure drift remediation for Terraform/OpenTofu. The source code has been updated to match the actual infrastructure state. Please review the changes before merging."
+              PLUGIN_PR_DESCRIPTION: Automated infrastructure drift remediation for Terraform/OpenTofu. The source code has been updated to match the actual infrastructure state. Please review the changes before merging.
               PLUGIN_IS_DRAFT: "false"
               PLUGIN_BYPASS_RULES: "false"
-
               PLUGIN_HARNESS_ACCOUNT_ID: <+env.HARNESS_ACCOUNT_ID>
               PLUGIN_HARNESS_ORG_ID: <+env.HARNESS_ORG_ID>
               PLUGIN_HARNESS_PROJECT_ID: <+env.HARNESS_PROJECT_ID>
-              PLUGIN_HARNESS_BASE_URL: <+pipeline.stages.stage1.steps.step3.output.outputVariables.BASE_URL>
-
+              PLUGIN_HARNESS_BASE_URL: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.BASE_URL>
               PLUGIN_DEBUG: "false"
               PLUGIN_OUTPUT_FILE: <+env.DRONE_OUTPUT>
-
-      platform:
-        os: linux
-        arch: arm64
+      name: iac
+      timeout: 10m
+      workspace: <+inputs.workspace>
   inputs:
     llmConnector:
       type: connector
       description: Anthropic API connector for Claude AI
-    awsConnector:
-      type: connector
-      description: AWS connector for infrastructure access
+    workspace:
+      type: string
+      description: IaCM workspace identifier
+    remediationType:
+      type: string
+      default: iacm-drift
+      description: Type of remediation (iacm-drift, sto, cloud-cost)
+    recommendation:
+      type: string
+      description: JSON string with recommendation details (required for sto and cloud-cost types)
     harnessKey:
       type: secret
       default: harness_api_key
-    gitConnector:
-      type: connector
-      description: Git connector for repository access
-    repo:
-      type: string
-      description: Repository name
-    branch:
-      type: string
-      default: main
-      description: The branch to clone from and create PR against (defaults to main)
-    repoType:
-      type: string
-      default: opentofu
-      description: Repository type - terraform or opentofu (defaults to opentofu)
-    awsRegion:
-      type: string
-      default: us-east-1
-      description: AWS region for infrastructure
-    tfvarFile:
-      type: string
-      description: Optional path to tfvar file (relative to working directory) for plan and remediation context
