@@ -5,247 +5,157 @@
 
 ## Overview
 
-The **IaCM Remediation Agent** is an AI-powered agent that automatically detects and fixes infrastructure drift in Terraform and OpenTofu repositories. The agent first runs `terraform/tofu plan` to detect drift, and if found, analyzes the plan to understand the discrepancies and updates the source code to match the real infrastructure state — then raises a pull request for review.
+The **IaCM Remediation Agent** is an AI-powered agent that automatically remediates infrastructure issues identified by Harness IaCM, STO, and CCM modules. It analyzes the issue, updates the source code in Terraform/OpenTofu repositories, and raises a pull request for review.
+
+Supported remediation types:
+- **iacm-drift**: Resolves infrastructure drift by updating source code to match the actual infrastructure state.
+- **sto**: Fixes security vulnerabilities identified by Harness STO scans.
+- **cloud-cost**: Applies cost optimization recommendations from Harness CCM.
 
 ---
 
-## Key Capabilities
+## Key capabilities
 
-- 🔍 **Automatic Drift Detection**
+- **Automatic drift detection**: Uses IaCM workspace configuration to run Terraform/OpenTofu `init` and `plan` commands and detect infrastructure drift automatically.
 
-  - Runs Terraform/OpenTofu `init` and `plan` commands
-  - Detects infrastructure drift automatically
-  - Generates plan JSON for analysis
-  - Skips remediation when no drift is detected (exit code 0)
+- **AI-powered code fixes**: Analyzes plan output to understand resource changes and updates `.tf` files to reflect actual infrastructure state with minimal, targeted changes.
 
-- 📊 **Drift Analysis**
+- **Multi-type remediation**: Supports infrastructure drift remediation (`iacm-drift`), security vulnerability fixes (`sto`), and cloud cost optimization (`cloud-cost`).
 
-  - Parses Terraform/OpenTofu plan JSON to identify drifted resources
-  - Understands resource attribute changes, additions, and removals
-  - Correlates drift with existing source code definitions
+- **Pull request automation**: Creates PRs with clear descriptions, submits for human review before any merge, and respects branch protection rules.
 
-- 🛠 **Automated Code Fixes**
-
-  - Updates `.tf` files to reflect actual infrastructure state
-  - Handles resource attribute changes (e.g., instance sizes, tags, configurations)
-  - Respects existing code style and module structure
-
-- 🔁 **Pull Request Automation**
-
-  - Creates PRs with clear descriptions of drift remediation
-  - Links changes back to the drifted resources
-  - Submits for human review before any merge
-
-- 🧠 **Context-Aware Reasoning**
-  - Uses tfvar files for additional context when available
-  - Understands Terraform resource relationships and dependencies
-  - Applies minimal, targeted changes to resolve drift
+- **Context-aware reasoning**: Uses tfvar files and workspace variables for additional context, understands Terraform resource relationships and dependencies.
 
 ---
 
-## How It Works
+## How it works
 
-1. **Clone Repository**: Clones the Terraform/OpenTofu repository from the specified branch
-2. **Bootstrap & Drift Detection**: Runs `terraform/tofu init` and `plan` to detect drift
-   - Exit Code 0: No drift detected → Pipeline completes successfully
-   - Exit Code 10: Drift detected → Continues to remediation
-3. **IaCM Remediation Agent**: (Only if drift detected) Analyzes the plan JSON and applies code changes to resolve drift
-4. **Show Changes**: Displays git diff of applied fixes
-5. **Detect SCM Provider**: Automatically identifies Git provider (Harness Code, GitHub, GitLab, etc.)
-6. **Configure Authentication**: Sets up appropriate credentials based on SCM provider
-7. **Push Changes**: Commits and pushes fixes to the `iacm-drift-remediation` branch
-8. **Create PR**: Automatically creates a pull request back to the source branch
+1. **Init**: Runs `terraform/tofu init` using the IaCM workspace configuration.
+2. **Plan**: Executes `terraform/tofu plan` to detect drift or changes.
+3. **Remediation agent**: Analyzes the plan output and applies targeted code changes to resolve the issue.
+4. **Show changes**: Displays `git diff` of applied fixes.
+5. **Detect SCM and configure auth**: Derives repository information and credentials from the IaCM workspace (repo URL, token, branch, SCM provider).
+6. **Push and create PR**: Commits changes, pushes to a new branch, and creates a pull request back to the source branch.
 
-## Required Inputs
+---
 
-| Input | Type | Required | Description | Default |
-|-------|------|----------|-------------|---------|
-| `llmConnector` | connector | Yes | LLM connector for Claude AI (Anthropic) | _Required_ |
-| `awsConnector` | connector | Yes | AWS connector for infrastructure access | _Required_ |
-| `harnessKey` | secret | No | Harness API key for PR creation | `harness_api_key` |
-| `gitConnector` | connector | Yes | Git connector for repository access | _Required_ |
-| `repo` | string | Yes | Repository name | _Required_ |
-| `branch` | string | No | Branch to clone from and create PR against | `main` |
-| `repoType` | string | No | Repository type: `terraform` or `opentofu` | `opentofu` |
-| `awsRegion` | string | No | AWS region for infrastructure | `us-east-1` |
-| `tfvarFile` | string | No | Path to tfvar file (relative to repo root) for plan and context | — |
+## Inputs
+
+| Input | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `llmConnector` | connector | Yes | - | Anthropic API connector for Claude AI |
+| `workspace` | string | Yes | - | IaCM workspace identifier |
+| `remediationType` | string | No | `iacm-drift` | Type of remediation: `iacm-drift`, `sto`, or `cloud-cost` |
+| `recommendation` | string | No | - | JSON string with recommendation details (required for `sto` and `cloud-cost` types) |
+| `harnessKey` | secret | No | `harness_api_key` | Harness API key for authentication |
+
+---
 
 ## Configuration
 
-- **Clone Depth:** 1 commit (shallow clone for performance)
-- **Platform:** Linux (arm64)
-- **Max Iterations:** 200 (for coding agent)
-- **Detailed Logging:** Enabled
-- **Branch Name:** `iacm-drift-remediation`
-- **Force Push:** Enabled
-
-## Agent Behavior
-
-The IaCM remediation workflow operates in two phases:
-
-### Phase 1: Bootstrap & Detection
-1. **Init**: Runs `terraform/tofu init` to initialize the workspace
-2. **Plan**: Executes `terraform/tofu plan` with optional tfvar file
-3. **Drift Detection**: Analyzes plan JSON for resource changes
-4. **Decision**:
-   - No drift (exit code 0) → Pipeline ends successfully
-   - Drift detected (exit code 10) → Proceeds to Phase 2
-
-### Phase 2: Remediation (Conditional)
-1. **Prompt Construction**: References the plan.json file and optional tfvar file
-2. **AI Code Agent Execution**: The `ai-code-agent` binary reads the plan, analyzes the drift, and makes targeted changes to `.tf` files
-3. **Change Submission**: All changes are committed, pushed, and submitted as a PR for review
-
-The agent focuses exclusively on resolving the drift detected in the plan. It does not make speculative changes or modify resources that are not part of the drift.
-
-## Usage Example
-
-### Basic Usage (OpenTofu with AWS)
-
-```yaml
-inputs:
-  llmConnector: <select Anthropic connector>
-  awsConnector: <select AWS connector>
-  gitConnector: <select Git connector>
-  repo: "my-organization/my-terraform-repo"
-  branch: "main"
-  repoType: "opentofu"
-  awsRegion: "us-east-1"
-```
-
-### With Terraform and Tfvar File
-
-```yaml
-inputs:
-  llmConnector: <select Anthropic connector>
-  awsConnector: <select AWS connector>
-  gitConnector: <select Git connector>
-  repo: "my-organization/my-terraform-repo"
-  branch: "main"
-  repoType: "terraform"
-  awsRegion: "us-west-2"
-  tfvarFile: "environments/prod.tfvars"
-```
-
-### Multiple Environments
-
-```yaml
-inputs:
-  llmConnector: <select Anthropic connector>
-  awsConnector: <select AWS connector>
-  gitConnector: <select Git connector>
-  repo: "my-organization/my-terraform-repo"
-  branch: "staging"
-  repoType: "opentofu"
-  awsRegion: "eu-west-1"
-  tfvarFile: "terraform.staging.tfvars"
-```
-
-## Technical Details
-
-### IaCM Bootstrap Agent Settings
-- **Container Image**: `sunnyagarwalhs/iacm-bootstrap-agent:latest`
-- **Working Directory**: `/harness`
-- **Output Directory**: `/harness/drift-output`
-- **Plan Output**: `plan.json`
-- **Output Variables**:
-  - `DRIFT_DETECTED="false"` = No drift
-  - `DRIFT_DETECTED="true"` = Drift detected
-
-### IaCM Remediation Agent Settings
-- **Container Image**: `sunnyagarwalhs/iacm-remediation-agent:latest`
-- **Working Directory**: `/harness`
-- **Plan File**: `/harness/drift-output/plan.json`
-- **Detailed Logging**: Enabled
-- **Max Iterations**: 200
-
-### Branch Management
-- **Branch Name**: `iacm-drift-remediation`
-- **Unique Per Execution**: Yes (adds timestamp suffix if branch exists)
-- **Force Push**: Enabled
-- **Commit Message**: "IaCM drift remediation: automated changes by Harness AI"
-
-### Pull Request Configuration
-- **Auto-Create**: Yes
-- **PR Title**: "IaCM Drift Remediation: Automated changes by Harness AI"
-- **PR Description**: "Automated infrastructure drift remediation for Terraform/OpenTofu. The source code has been updated to match the actual infrastructure state. Please review the changes before merging."
-- **Draft Mode**: Disabled
-- **Bypass Rules**: Disabled (respects branch protection rules)
-
-### SCM Provider Support
-
-The agent automatically detects and configures authentication for:
-- **Harness Code** (Git SCM type)
-- **GitHub**
-- **GitLab**
-- **Bitbucket**
-- Other Git providers
-
-Authentication is handled transparently using the provided `gitConnector` and appropriate tokens.
-
-## Best Practices
-
-### Reviewing Generated Fixes
-- Always review the PR before merging
-- Verify the drift resolution matches your intended infrastructure state
-- Check that no unrelated resources were modified
-- Run `terraform plan` after merging to confirm drift is resolved
-- Ensure the changes align with your team's Terraform conventions
-
-### Tfvar Files
-- Specify the tfvar file path relative to repository root
-- The same tfvar file is used for both plan generation and remediation context
-- Supports any `.tfvars` file in your repository structure
-- Example paths: `terraform.tfvars`, `environments/prod.tfvars`, `vars/production.tfvars`
-
-### Cloud Provider Access
-- Use Harness connectors for cloud provider authentication
-- The bootstrap agent requires read access to infrastructure state
-- For AWS: Provide an AWS connector with appropriate IAM permissions
-- The connector credentials are automatically set as environment variables for Terraform/OpenTofu
-- Supported providers: AWS (more providers can be added as needed)
-
-## Troubleshooting
-
-### Bootstrap Agent Fails
-- Verify that your repository contains valid Terraform/OpenTofu files
-- Ensure required provider credentials are available
-- Check that the `tfvarFile` path is correct (if specified)
-- Review bootstrap logs for initialization or planning errors
-
-### Agent Doesn't Generate Fixes
-- Verify the `llmConnector` is properly configured with valid Anthropic credentials
-- Ensure the bootstrap agent successfully generated plan.json
-- Check that the repository contains `.tf` files the agent can modify
-- Review agent logs in the pipeline execution for error details
-
-### Fixes Don't Resolve the Drift
-- Try providing a `tfvarFile` for additional context
-- Review the agent's changes to understand its reasoning
-- Verify the plan was generated against current infrastructure
-- Manual intervention may be required for complex drift scenarios
-
-### No PR Created
-- Verify `harnessKey` secret has correct permissions
-- Check that changes were actually made (review git diff step)
-- Ensure branch permissions allow PR creation
-- Confirm the `gitConnector` is properly configured
-
-### Authentication Errors
-- Verify the `gitConnector` has valid credentials
-- For Harness Code: Ensure `harnessKey` is valid
-- For external SCMs: Verify the connector token has push permissions
-- Check that the SCM provider is correctly detected in logs
-
-## Security Considerations
-
-- API keys are stored as Harness secrets and never exposed in logs
-- Agent only applies targeted fixes based on drift analysis
-- All changes are submitted via PR for human review
-- No automatic merging — requires developer approval
-- Respects branch protection rules (bypass disabled by default)
-- Plan JSON and tfvar content are passed as pipeline inputs, not stored persistently
+- **Platform**: Linux (arm64)
+- **Timeout**: 10 minutes
+- **Max iterations**: 200 (for coding agent)
+- **Branch suffix**: `iacm-drift-remediation`
+- **Force push**: Enabled
+- **Unique per execution**: Yes (adds timestamp suffix)
 
 ---
 
-**Last Updated:** February 2026
+## Usage example
+
+### Basic usage (IaCM drift remediation)
+
+```yaml
+inputs:
+  llmConnector: <select Anthropic connector>
+  workspace: "my-workspace-id"
+```
+
+### STO remediation
+
+```yaml
+inputs:
+  llmConnector: <select Anthropic connector>
+  workspace: "my-workspace-id"
+  remediationType: "sto"
+  recommendation: '{"vulnerability": "CVE-2024-1234", "severity": "high", "fix": "upgrade package X to version Y"}'
+```
+
+### Cloud cost optimization
+
+```yaml
+inputs:
+  llmConnector: <select Anthropic connector>
+  workspace: "my-workspace-id"
+  remediationType: "cloud-cost"
+  recommendation: '{"resource": "aws_instance.web", "suggestion": "downsize from m5.xlarge to m5.large"}'
+```
+
+---
+
+## Technical details
+
+### IaCM remediation agent plugin
+- **Container image**: `pkg.harness.io/.../iacm-remediation-agent-plugin`
+- **Working directory**: Derived from `<+iacmOutput.rootDir>`
+- **Inputs**: `ROOT_DIR`, `ANTHROPIC_API_KEY`, `PLUGIN_REMEDIATION_TYPE`, `PLUGIN_RECOMMENDATION`
+
+### Create PR plugin
+- **Container image**: `pkg.harness.io/.../create-pr-plugin`
+- **Working directory**: Set via `PLUGIN_WORKING_DIR` (derived from IaCM workspace root)
+- **Commit message**: "IaCM drift remediation: automated changes by Harness AI"
+
+### Branch management
+- **Branch name**: `<source-branch>-iacm-drift-remediation-<timestamp>`
+- **Unique per execution**: Yes
+- **Force push**: Enabled
+
+### Pull request configuration
+- **Auto-create**: Yes
+- **PR title**: "IaCM Drift Remediation: Automated changes by Harness AI"
+- **Draft mode**: Disabled
+- **Bypass rules**: Disabled (respects branch protection rules)
+
+### SCM provider support
+
+Repository information (URL, token, branch, SCM type) is automatically derived from the IaCM workspace configuration. Supported providers:
+- **GitHub**
+- **GitLab**
+- **Bitbucket**
+- **Harness Code**
+
+---
+
+## Troubleshooting
+
+### Init or plan fails
+- Verify the IaCM workspace is correctly configured with valid provider credentials.
+- Check that the workspace points to a valid Terraform/OpenTofu repository.
+
+### Agent doesn't generate fixes
+- Verify the `llmConnector` is properly configured with valid Anthropic credentials.
+- Ensure the plan step detected changes.
+- Check agent logs for error details.
+
+### PR creation fails with "Not Found"
+- Verify the repository information is correctly derived from the workspace.
+- Check that the token has push and PR creation permissions.
+
+### Authentication errors on git push
+- The agent sets up authentication by embedding the workspace token in the git remote URL.
+- Verify the workspace token has write access to the repository.
+
+---
+
+## Security considerations
+
+- API keys are stored as Harness secrets and never exposed in logs.
+- Agent only applies targeted fixes based on plan analysis.
+- All changes are submitted via PR for human review.
+- No automatic merging — requires developer approval.
+- Respects branch protection rules (bypass disabled by default).
+
+---
+
+**Last updated:** March 2026
