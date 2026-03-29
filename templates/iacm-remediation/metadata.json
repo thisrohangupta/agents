@@ -1,5 +1,5 @@
 {
     "name": "IaCM Remediation",
-    "description": "AI-powered agent that fixes infrastructure drift in Terraform/OpenTofu repositories by analyzing drifted plan JSON and updating source code to match actual state.",
+    "description": "AI-powered agent that automatically remediates infrastructure issues identified by Harness IaCM, STO, and CCM modules. It analyzes the issue, updates the source code in Terraform/OpenTofu repositories, and raises a pull request for review.",
     "version": "1.0.0"
 }
