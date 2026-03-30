@@ -1,0 +1,140 @@
+pipeline:
+  stages:
+    - steps:
+        - name: init
+          iacm:
+            uses: openTofuStep@1.0.0
+            with:
+              command: init
+        - name: plan
+          iacm:
+            uses: openTofuStep@1.0.0
+            with:
+              command: plan
+        - name: iacm_remediation_agent
+          id: remediate
+          run:
+            container:
+              connector: account.harnessImage
+              image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/iacm-remediation-agent-plugin:IAC-5536-iacm-remediation-agent
+            with:
+              ROOT_DIR: <+iacmOutput.rootDir>
+            env:
+              ANTHROPIC_API_KEY: <+inputs.llmConnector.token>
+              PLUGIN_REMEDIATION_TYPE: <+inputs.remediationType>
+              PLUGIN_RECOMMENDATION: <+inputs.recommendation>
+        - name: show_git_diff
+          id: git_diff
+          run:
+            shell: bash
+            script: |-
+              cd <+iacmOutput.rootDir>
+              git add -A
+              git diff --cached
+        - name: fix_env_variables
+          id: fix_env_variables
+          run:
+            shell: bash
+            script: |-
+              set -euo pipefail
+
+              # Debug: show raw iacmOutput values
+              echo "=== Raw iacmOutput values ==="
+              echo "REPO_TYPE: '$REPO_TYPE'"
+              echo "REPO_URL: '$REPO_URL'"
+              echo "REPO_TOKEN: (length=${#REPO_TOKEN})"
+              echo "ROOT_DIR: '$ROOT_DIR'"
+              echo "==="
+
+              # Derive SCM provider from iacmOutput.repoType (e.g. Github, Bitbucket, Gitlab)
+              SCM_PROVIDER=$(echo "$REPO_TYPE" | tr '[:upper:]' '[:lower:]')
+              echo "SCM Provider: $SCM_PROVIDER"
+
+              # Extract netrc machine from repo URL (e.g. github.com)
+              NETRC_MACHINE=$(echo "$REPO_URL" | sed -E 's|https?://([^/]+)/.*|\1|')
+              NETRC_USERNAME=$(echo "$REPO_URL" | sed -E 's|https?://[^/]+/([^/]+)/.*|\1|')
+
+              # Extract base URL (protocol + host)
+              BASE_URL=$(echo "$REPO_URL" | sed -E 's|(https?://[^/]+).*|\1|')
+
+              # Extract repo path (owner/repo) from actual git remote, stripping .git suffix
+              ACTUAL_URL=$(cd "$ROOT_DIR" && git remote get-url origin)
+              REPO=$(echo "$ACTUAL_URL" | sed -E 's|https?://[^/]+/||; s|\.git$||')
+
+              cd "$ROOT_DIR"
+
+              # Get branch from the cloned repo
+              SOURCE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+              echo "Repo: $REPO, Branch: $SOURCE_BRANCH"
+
+              # Set up git authentication by embedding token in remote URL
+              CURRENT_URL=$(git remote get-url origin)
+              AUTH_URL=$(echo "$CURRENT_URL" | sed -E "s|https://|https://x-access-token:${REPO_TOKEN}@|")
+              git remote set-url origin "$AUTH_URL"
+
+              echo "SCM_PROVIDER=$SCM_PROVIDER" >> $DRONE_OUTPUT
+              echo "TOKEN=$REPO_TOKEN" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "NETRC_MACHINE=$NETRC_MACHINE" >> $DRONE_OUTPUT
+              echo "NETRC_USERNAME=$NETRC_USERNAME" >> $DRONE_OUTPUT
+              echo "NETRC_PASSWORD=$REPO_TOKEN" >> $HARNESS_OUTPUT_SECRET_FILE
+              echo "BASE_URL=$BASE_URL" >> $DRONE_OUTPUT
+              echo "REPO=$REPO" >> $DRONE_OUTPUT
+              echo "SOURCE_BRANCH=$SOURCE_BRANCH" >> $DRONE_OUTPUT
+              echo "WORKING_DIR=$(pwd)" >> $DRONE_OUTPUT
+            env:
+              REPO_TOKEN: <+iacmOutput.repoToken>
+              REPO_URL: <+iacmOutput.repoUrl>
+              REPO_TYPE: <+iacmOutput.repoType>
+              ROOT_DIR: <+iacmOutput.rootDir>
+        - name: push_and_create_pr
+          id: push_and_create_pr
+          run:
+            container:
+              image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/create-pr-plugin:IAC-5536-iacm-remediation-agent
+              connector: account.harnessImage
+            env:
+              PLUGIN_SCM_PROVIDER: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.SCM_PROVIDER>
+              PLUGIN_TOKEN: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.TOKEN>
+              PLUGIN_REPO: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.REPO>
+              PLUGIN_SOURCE_BRANCH: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.SOURCE_BRANCH>
+              PLUGIN_WORKING_DIR: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.WORKING_DIR>
+              PLUGIN_NETRC_MACHINE: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.NETRC_MACHINE>
+              PLUGIN_NETRC_USERNAME: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.NETRC_USERNAME>
+              PLUGIN_NETRC_PASSWORD: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.NETRC_PASSWORD>
+              PLUGIN_BRANCH_SUFFIX: iacm-drift-remediation
+              PLUGIN_UNIQUE_PER_EXECUTION: "true"
+              PLUGIN_FORCE_PUSH: "true"
+              PLUGIN_COMMIT_MESSAGE: "IaCM drift remediation: automated changes by Harness AI"
+              PLUGIN_PUSH_CHANGES: "true"
+              PLUGIN_CREATE_PR: "true"
+              PLUGIN_PR_TITLE: "IaCM Drift Remediation: Automated changes by Harness AI"
+              PLUGIN_PR_DESCRIPTION: Automated infrastructure drift remediation for Terraform/OpenTofu. The source code has been updated to match the actual infrastructure state. Please review the changes before merging.
+              PLUGIN_IS_DRAFT: "false"
+              PLUGIN_BYPASS_RULES: "false"
+              PLUGIN_HARNESS_ACCOUNT_ID: <+env.HARNESS_ACCOUNT_ID>
+              PLUGIN_HARNESS_ORG_ID: <+env.HARNESS_ORG_ID>
+              PLUGIN_HARNESS_PROJECT_ID: <+env.HARNESS_PROJECT_ID>
+              PLUGIN_HARNESS_BASE_URL: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.BASE_URL>
+              PLUGIN_DEBUG: "false"
+              PLUGIN_OUTPUT_FILE: <+env.DRONE_OUTPUT>
+      name: iac
+      timeout: 10m
+      workspace: <+inputs.workspace>
+  inputs:
+    llmConnector:
+      type: connector
+      description: Anthropic API connector for Claude AI
+    workspace:
+      type: string
+      description: IaCM workspace identifier
+    remediationType:
+      type: string
+      default: iacm-drift
+      description: Type of remediation (iacm-drift, sto, cloud-cost)
+    recommendation:
+      type: string
+      description: JSON string with recommendation details (required for sto and cloud-cost types)
+    harnessKey:
+      type: secret
+      default: harness_api_key
