@@ -47,7 +47,7 @@ Supported remediation types:
 | `workspace` | string | Yes | - | IaCM workspace identifier |
 | `remediationType` | string | No | `iacm-drift` | Type of remediation: `iacm-drift`, `sto`, or `cloud-cost` |
 | `recommendation` | string | No | - | JSON string with recommendation details (required for `sto` and `cloud-cost` types) |
-| `harnessKey` | secret | No | `harness_api_key` | Harness API key for authentication |
+
 
 ---
 
