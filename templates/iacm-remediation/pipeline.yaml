@@ -15,7 +15,6 @@ pipeline:
           id: remediate
           run:
             container:
-              connector: account.harnessImage
               image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/iacm-remediation-agent-plugin:IAC-5536-iacm-remediation-agent
             with:
               ROOT_DIR: <+iacmOutput.rootDir>
@@ -92,7 +91,6 @@ pipeline:
           run:
             container:
               image: pkg.harness.io/vrvdt5ius7uwygso8s0bia/harness-agents/create-pr-plugin:IAC-5536-iacm-remediation-agent
-              connector: account.harnessImage
             env:
               PLUGIN_SCM_PROVIDER: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.SCM_PROVIDER>
               PLUGIN_TOKEN: <+pipeline.stages.iac_1.steps.fix_env_variables.output.outputVariables.TOKEN>
@@ -124,14 +122,18 @@ pipeline:
   inputs:
     llmConnector:
       type: connector
+      required: true
       description: Anthropic API connector for Claude AI
     workspace:
       type: string
+      required: true
       description: IaCM workspace identifier
     remediationType:
       type: string
+      required: true
       default: iacm-drift
       description: Type of remediation (iacm-drift, sto, cloud-cost)
     recommendation:
       type: string
+      required: true
       description: JSON string with recommendation details (required for sto and cloud-cost types)
