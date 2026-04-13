@@ -3,12 +3,12 @@ pipeline:
     - steps:
         - name: init
           iacm:
-            uses: openTofuStep@1.0.0
+            uses: openTofuStep@1.0.3
             with:
               command: init
         - name: plan
           iacm:
-            uses: openTofuStep@1.0.0
+            uses: openTofuStep@1.0.3
             with:
               command: plan
         - name: iacm_remediation_agent
@@ -135,6 +135,3 @@ pipeline:
     recommendation:
       type: string
       description: JSON string with recommendation details (required for sto and cloud-cost types)
-    harnessKey:
-      type: secret
-      default: harness_api_key
