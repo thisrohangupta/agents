@@ -28,6 +28,9 @@ pipeline:
             shell: bash
             script: |-
               cd <+iacmOutput.rootDir>
+              # Remove OpenTofu/Terraform generated artifacts so they don't end up in the PR
+              rm -f plan.out *.tfplan
+              rm -rf .terraform
               git add -A
               git diff --cached
         - name: fix_env_variables
@@ -135,5 +138,5 @@ pipeline:
       description: Type of remediation (iacm-drift, sto, cloud-cost)
     recommendation:
       type: string
-      required: true
+      required: false
       description: JSON string with recommendation details (required for sto and cloud-cost types)
