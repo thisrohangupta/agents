@@ -3,10 +3,17 @@ pipeline:
     - name: Stage
       id: stage
       steps:
-        - name: Step
-          id: step
-          run: echo "hello world"
-        - name: pnpm build and test
-          id: pnpm_build_and_test
-          template:
-            uses: pnpm_build_test@1.0
+        - name: Harness
+          approval:
+            with:
+              message: This looks good
+              execution-details: false
+              auto-reject: false
+              user-groups:
+                - _project_all_users
+              approvers-min-count: 1
+              block-executor: false
+              auto-approve: false
+              inputs: {}
+            uses: harness
+          id: harness
