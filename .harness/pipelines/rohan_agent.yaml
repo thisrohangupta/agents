@@ -6,3 +6,7 @@ pipeline:
         - name: Step
           id: step
           run: echo "hello world"
+        - name: pnpm build and test
+          id: pnpm_build_and_test
+          template:
+            uses: pnpm_build_test@1.0
